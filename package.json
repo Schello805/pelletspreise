@@ -1,0 +1,13 @@
+{
+  "name": "signatur-generator",
+  "private": true,
+  "version": "1.1.39",
+  "description": "Lokale Webapp zum Erstellen von E-Mail-Signaturen",
+  "type": "module",
+  "scripts": {
+    "verify": "node --check app.js && node --check templates.js && node --check version.js && node --check pwa.js && node --check service-worker.js && node scripts/check-version.mjs && node --check pelletpreise/app.js && node --check pelletpreise/src/*.js && node --check server/server.js && node --check server/lib/util.js && node --check server/lib/store.js && node --check server/lib/history.js && node --check server/scrape/runner.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
+  }
+}

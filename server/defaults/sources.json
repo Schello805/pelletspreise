@@ -1,0 +1,55 @@
+[
+  {
+    "id": "heizpellets24_de_avg",
+    "name": "HeizPellets24 Ø DE (Startseite)",
+    "enabled": true,
+    "group": "average",
+    "kind": "http-regex",
+    "url": "https://www.heizpellets24.de/",
+    "extract": {
+      "regex": "product--icon[\\s\\S]{0,1200}?<span>\\s*([0-9]{2,4}[\\.,][0-9]{2})\\s*<\\/span>\\s*<span>\\s*€\\s*<\\/span>[\\s\\S]{0,1200}?\\/\\s*1\\.000\\s*kg",
+      "regexAsOf": "\\b(\\d{2}\\.\\d{2}\\.\\d{2})\\s*\\|\\s*(\\d{2}:\\d{2})\\b"
+    },
+    "lastRunAt": null
+  },
+  {
+    "id": "heizpellets24_best_offer",
+    "name": "HeizPellets24 Angebotsliste (günstigster)",
+    "enabled": true,
+    "group": "offers",
+    "kind": "heizpellets24",
+    "lastRunAt": null
+  },
+  {
+    "id": "holzpellets_net_avg_loose",
+    "name": "Holzpellets.net Durchschnitt (Lose Pellets)",
+    "enabled": true,
+    "group": "average",
+    "kind": "http-regex",
+    "url": "https://www.holzpellets.net/",
+    "extract": {
+      "regex": "Lose\\s+Pellets:[\\s\\S]{0,600}?([0-9]{2,4}[\\.,][0-9]{2})\\s*€"
+    },
+    "lastRunAt": null
+  },
+  {
+    "id": "holzpellets_net_avg_sack",
+    "name": "Holzpellets.net Durchschnitt (Pellets Sackware)",
+    "enabled": true,
+    "group": "average",
+    "kind": "http-regex",
+    "url": "https://www.holzpellets.net/",
+    "extract": {
+      "regex": "Pellets\\s+Sackware:[\\s\\S]{0,600}?([0-9]{2,4}[\\.,][0-9]{2})\\s*€"
+    },
+    "lastRunAt": null
+  },
+  {
+    "id": "holzpellets_net_best_offer",
+    "name": "Holzpellets.net Rechner (Bestes Angebot)",
+    "enabled": true,
+    "group": "offers",
+    "kind": "holzpellets-net",
+    "lastRunAt": null
+  }
+]
