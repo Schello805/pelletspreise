@@ -67,6 +67,7 @@ const state = {
   lastOffersRows: [],
   dailyRows: [],
   dailySeriesKey: null,
+  dailyCompareKeys: [],
   _dailyExportParams: "",
 };
 
@@ -423,6 +424,14 @@ function setupEvents() {
     state.dailySeriesKey = String($("dailySeriesSelect").value || "");
     renderDailyHistory();
   });
+  ["dailyCompareMode", "dailyCompareMax"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", () => renderDailyHistory());
+    el.addEventListener("change", () => renderDailyHistory());
+  });
+  const compareHost = document.getElementById("dailyCompareSeries");
+  if (compareHost) compareHost.addEventListener("change", () => renderDailyHistory());
 
   // Sources table actions
   $("sourcesBody").addEventListener("click", async (e) => {

@@ -35,7 +35,30 @@ function buildSeriesFromDailyRows(rows, { groupBy }) {
   return list;
 }
 
-function drawLineChart(canvas, points, { unitLabel = "", title = "" } = {}) {
+const CHART_PALETTE = [
+  "rgba(99, 230, 190, 0.92)",
+  "rgba(77, 171, 247, 0.92)",
+  "rgba(255, 212, 59, 0.92)",
+  "rgba(255, 107, 107, 0.92)",
+  "rgba(186, 104, 200, 0.92)",
+];
+
+function alignSeriesPoints(seriesList) {
+  const dates = new Set();
+  for (const s of seriesList) for (const p of s.points) dates.add(String(p.date));
+  const axis = Array.from(dates.values()).sort((a, b) => a.localeCompare(b, "de"));
+  const byKey = new Map();
+  for (const s of seriesList) {
+    const m = new Map(s.points.map((p) => [String(p.date), p.value]));
+    byKey.set(
+      s.key,
+      axis.map((d) => (typeof m.get(d) === "number" && Number.isFinite(m.get(d)) ? m.get(d) : null)),
+    );
+  }
+  return { axisDates: axis, valuesByKey: byKey };
+}
+
+function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } = {}) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -50,14 +73,19 @@ function drawLineChart(canvas, points, { unitLabel = "", title = "" } = {}) {
   ctx.fillStyle = "rgba(255,255,255,0.02)";
   ctx.fillRect(pad.l, pad.t, innerW, innerH);
 
-  const vals = points.map((p) => p.value).filter((v) => typeof v === "number" && Number.isFinite(v));
+  const allValues = [];
+  for (const s of seriesList) {
+    for (const p of s.points) if (typeof p.value === "number" && Number.isFinite(p.value)) allValues.push(p.value);
+  }
+  const vals = allValues;
   const minV = vals.length ? Math.min(...vals) : 0;
   const maxV = vals.length ? Math.max(...vals) : 1;
   const span = Math.max(1e-9, maxV - minV);
   const yMin = minV - span * 0.07;
   const yMax = maxV + span * 0.07;
 
-  const xOf = (i) => pad.l + (points.length <= 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
+  const { axisDates, valuesByKey } = alignSeriesPoints(seriesList);
+  const xOf = (i) => pad.l + (axisDates.length <= 1 ? innerW / 2 : (i / (axisDates.length - 1)) * innerW);
   const yOf = (v) => pad.t + (1 - (v - yMin) / (yMax - yMin)) * innerH;
 
   // grid
@@ -84,18 +112,51 @@ function drawLineChart(canvas, points, { unitLabel = "", title = "" } = {}) {
   ctx.fillText(`${fmt(yMax)} ${unitLabel}`, pad.l - 8, pad.t);
   ctx.fillText(`${fmt(yMin)} ${unitLabel}`, pad.l - 8, pad.t + innerH);
 
-  // line
-  const usable = points.filter((p) => typeof p.value === "number" && Number.isFinite(p.value));
-  if (usable.length >= 2) {
-    ctx.strokeStyle = "rgba(99, 230, 190, 0.9)";
+  const hasAny = vals.length > 0;
+  if (!hasAny) {
+    ctx.fillStyle = "rgba(255,255,255,0.62)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Keine Daten für diese Serie im Zeitraum.", pad.l + innerW / 2, pad.t + innerH / 2);
+    return;
+  }
+
+  // Legend (top right)
+  const legendMax = Math.min(seriesList.length, 5);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = "12px ui-sans-serif, system-ui";
+  const legendX = pad.l + innerW - 240;
+  let legendY = pad.t + 6;
+  for (let i = 0; i < legendMax; i += 1) {
+    const s = seriesList[i];
+    const color = CHART_PALETTE[i % CHART_PALETTE.length];
+    const label = String(s.label || s.key || "").slice(0, 38);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(legendX, legendY + 7, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.fillText(label, legendX + 10, legendY);
+    legendY += 18;
+  }
+
+  // Lines
+  for (let sIdx = 0; sIdx < seriesList.length; sIdx += 1) {
+    const s = seriesList[sIdx];
+    const values = valuesByKey.get(s.key) || [];
+    const usableCount = values.filter((v) => typeof v === "number" && Number.isFinite(v)).length;
+    if (usableCount < 2) continue;
+
+    ctx.strokeStyle = CHART_PALETTE[sIdx % CHART_PALETTE.length];
     ctx.lineWidth = 2;
     ctx.beginPath();
     let started = false;
-    for (let i = 0; i < points.length; i += 1) {
-      const p = points[i];
-      if (!(typeof p.value === "number" && Number.isFinite(p.value))) continue;
+    for (let i = 0; i < values.length; i += 1) {
+      const v = values[i];
+      if (!(typeof v === "number" && Number.isFinite(v))) continue;
       const x = xOf(i);
-      const y = yOf(p.value);
+      const y = yOf(v);
       if (!started) {
         ctx.moveTo(x, y);
         started = true;
@@ -105,22 +166,17 @@ function drawLineChart(canvas, points, { unitLabel = "", title = "" } = {}) {
     }
     ctx.stroke();
 
-    // points
-    ctx.fillStyle = "rgba(77, 171, 247, 0.95)";
-    for (let i = 0; i < points.length; i += 1) {
-      const p = points[i];
-      if (!(typeof p.value === "number" && Number.isFinite(p.value))) continue;
+    // Points
+    ctx.fillStyle = CHART_PALETTE[sIdx % CHART_PALETTE.length];
+    for (let i = 0; i < values.length; i += 1) {
+      const v = values[i];
+      if (!(typeof v === "number" && Number.isFinite(v))) continue;
       const x = xOf(i);
-      const y = yOf(p.value);
+      const y = yOf(v);
       ctx.beginPath();
-      ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
       ctx.fill();
     }
-  } else {
-    ctx.fillStyle = "rgba(255,255,255,0.62)";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("Keine Daten für diese Serie im Zeitraum.", pad.l + innerW / 2, pad.t + innerH / 2);
   }
 }
 
@@ -130,7 +186,12 @@ export function getDailyControls({ $ }) {
   const onlyOrderable = Boolean($("dailyOnlyOrderable").checked);
   const metric = String($("dailyMetric").value || "priceEurPerTon");
   const search = String($("dailySeriesSearch").value || "").trim().toLowerCase();
-  return { days, groupBy, onlyOrderable, metric, search };
+  const compareMode = Boolean($("dailyCompareMode")?.checked);
+  const compareMax = Math.max(1, Math.min(5, Number($("dailyCompareMax")?.value || 3)));
+  const compareKeys = compareMode
+    ? Array.from(document.querySelectorAll("#dailyCompareSeries input[type=checkbox]:checked")).map((el) => String(el.value))
+    : [];
+  return { days, groupBy, onlyOrderable, metric, search, compareMode, compareMax, compareKeys };
 }
 
 export function updateHistoryExportLinks({ $, state }) {
@@ -179,8 +240,9 @@ export function renderDailyHistory({
   const statsEl = $("dailyStats");
   const lastEl = $("dailyLastPoint");
   const canvas = $("historyChart");
+  const compareHost = $("dailyCompareSeries");
 
-  const { groupBy, metric, search } = getDailyControls({ $ });
+  const { groupBy, metric, search, compareMode, compareMax, compareKeys } = getDailyControls({ $ });
   const seriesList = buildSeriesFromDailyRows(state.dailyRows, { groupBy: groupBy === "dealer" ? "dealer" : "source" });
   const filtered = search ? seriesList.filter((s) => s.label.toLowerCase().includes(search)) : seriesList;
 
@@ -189,7 +251,8 @@ export function renderDailyHistory({
     dailyBody.innerHTML = `<tr><td colspan="7" class="muted">Keine Tageswerte (noch keine Abrufe?)</td></tr>`;
     statsEl.textContent = "—";
     lastEl.textContent = "—";
-    drawLineChart(canvas, [], {});
+    if (compareHost) compareHost.innerHTML = "";
+    drawMultiLineChart(canvas, [], {});
     return;
   }
 
@@ -201,25 +264,97 @@ export function renderDailyHistory({
     .join("");
 
   const selected = filtered.find((s) => s.key === candidateKey) || filtered[0];
-  const points = selected.items.map((r) => ({ date: r.date, value: Number(r[metric]) }));
-  const values = points.map((p) => (Number.isFinite(p.value) ? p.value : null)).filter((v) => v != null);
-  const st = computeSeriesStats(values);
   const unitLabel = metric === "totalEur" ? "€" : "€/t";
   const title = `${selected.label} · ${metric === "totalEur" ? "Gesamt" : "Preis"} (${unitLabel})`;
 
-  drawLineChart(canvas, points, { unitLabel, title });
+  // Compare series (chart only)
+  const availableKeys = new Set(filtered.map((s) => s.key));
+  const cleaned = (compareMode ? compareKeys : [])
+    .filter((k) => availableKeys.has(k))
+    .slice(0, compareMax);
+  const fallback = filtered.slice(0, compareMax).map((s) => s.key);
+  state.dailyCompareKeys = cleaned.length ? cleaned : fallback;
 
-  if (!st) {
-    statsEl.innerHTML = "—";
-  } else {
-    const nf = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
-    statsEl.innerHTML = `Punkte: <strong>${st.count}</strong><br/>
+  if (compareHost) {
+    if (!compareMode) {
+      compareHost.style.display = "none";
+      compareHost.innerHTML = "";
+    } else {
+      compareHost.style.display = "";
+      compareHost.innerHTML = filtered
+        .slice(0, 80)
+        .map((s, idx) => {
+          const checked = state.dailyCompareKeys.includes(s.key) ? " checked" : "";
+          const dot = CHART_PALETTE[idx % CHART_PALETTE.length];
+          return `<label class="compare-item" title="${escapeAttr(s.label)}">
+            <span class="compare-dot" style="background:${escapeAttr(dot)}"></span>
+            <input type="checkbox" value="${escapeAttr(s.key)}"${checked} />
+            <span class="text-truncate">${escapeHtml(s.label)}</span>
+          </label>`;
+        })
+        .join("");
+    }
+  }
+
+  const chartSeries = compareMode
+    ? state.dailyCompareKeys
+        .map((k) => filtered.find((s) => s.key === k))
+        .filter(Boolean)
+        .slice(0, compareMax)
+    : [selected];
+
+  const chartInput = chartSeries.map((s) => ({
+    key: s.key,
+    label: s.label,
+    points: s.items.map((r) => ({ date: r.date, value: Number(r[metric]) })),
+  }));
+  drawMultiLineChart(canvas, chartInput, { unitLabel, title: compareMode ? `Vergleich · ${metric === "totalEur" ? "Gesamt" : "Preis"} (${unitLabel})` : title });
+
+  // Stats
+  const statsFor = (s) => {
+    const pts = s.items.map((r) => Number(r[metric]));
+    return computeSeriesStats(pts);
+  };
+
+  if (!compareMode || chartSeries.length <= 1) {
+    const st = statsFor(selected);
+    if (!st) {
+      statsEl.innerHTML = "—";
+    } else {
+      const nf = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
+      statsEl.innerHTML = `Punkte: <strong>${st.count}</strong><br/>
 Min: <strong>${nf.format(st.min)} ${unitLabel}</strong> · Median: <strong>${nf.format(st.median)} ${unitLabel}</strong><br/>
 Ø: <strong>${nf.format(st.avg)} ${unitLabel}</strong> · Max: <strong>${nf.format(st.max)} ${unitLabel}</strong><br/>
 P10–P90: <strong>${nf.format(st.p10)}–${nf.format(st.p90)} ${unitLabel}</strong>`;
+    }
+  } else {
+    const nf = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
+    statsEl.innerHTML = chartSeries
+      .map((s, idx) => {
+        const st = statsFor(s);
+        if (!st) return null;
+        const dot = CHART_PALETTE[idx % CHART_PALETTE.length];
+        return `<div class="row" style="gap:10px; align-items:baseline; justify-content:space-between;">
+          <span class="row" style="gap:8px; align-items:center;">
+            <span class="compare-dot" style="background:${escapeAttr(dot)}"></span>
+            <strong>${escapeHtml(String(s.label || s.key))}</strong>
+          </span>
+          <span class="muted">Ø ${escapeHtml(nf.format(st.avg))} ${escapeHtml(unitLabel)} · Min ${escapeHtml(nf.format(st.min))} · Max ${escapeHtml(nf.format(st.max))}</span>
+        </div>`;
+      })
+      .filter(Boolean)
+      .join("");
   }
 
-  const last = selected.items[selected.items.length - 1];
+  const lastCandidates = chartSeries
+    .map((s) => s.items[s.items.length - 1])
+    .filter(Boolean)
+    .map((r) => ({ r, val: Number(r[metric]) }))
+    .filter((x) => Number.isFinite(x.val));
+  const bestLast = lastCandidates.length
+    ? lastCandidates.slice().sort((a, b) => (metric === "totalEur" ? a.val - b.val : a.val - b.val))[0]
+    : null;
+  const last = bestLast ? bestLast.r : selected.items[selected.items.length - 1];
   if (last) {
     const val = Number(last[metric]);
     const valText = Number.isFinite(val) ? `${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(val)} ${unitLabel}` : "—";
@@ -227,9 +362,7 @@ P10–P90: <strong>${nf.format(st.p10)}–${nf.format(st.p90)} ${unitLabel}</str
 Wert: <strong>${escapeHtml(valText)}</strong><br/>
 Quelle: ${escapeHtml(last.sourceName || last.sourceId || "—")}<br/>
 Händler: ${escapeHtml(last.dealerName || "—")}`;
-  } else {
-    lastEl.textContent = "—";
-  }
+  } else lastEl.textContent = "—";
 
   const rows = selected.items.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
   dailyBody.innerHTML = rows
@@ -253,4 +386,3 @@ Händler: ${escapeHtml(last.dealerName || "—")}`;
     })
     .join("");
 }
-

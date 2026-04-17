@@ -36,6 +36,10 @@ Optional (Playwright Browser installieren – groß):
 
 - `sudo INSTALL_PLAYWRIGHT=1 bash scripts/install-pelletpreis-checker-debian13-lxc.sh`
 
+Optional (SQLite statt JSON-Dateien, empfohlen bei viel Historie):
+
+- `sudo INSTALL_SQLITE=1 bash scripts/install-pelletpreis-checker-debian13-lxc.sh`
+
 ## Lizenz
 
 AGPL-3.0 (siehe `LICENSE`).
@@ -43,4 +47,3 @@ AGPL-3.0 (siehe `LICENSE`).
 ## Hinweis
 
 Scraping kann gegen Nutzungsbedingungen verstoßen. Nutze nur Quellen, die du verwenden darfst.
-

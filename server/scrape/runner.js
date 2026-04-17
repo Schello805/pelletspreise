@@ -3,6 +3,63 @@ import { applyPlaceholders, nowIso, parseGermanNumber, parseRegexInput } from ".
 const CONTACT_EMAIL = String(process.env.CONTACT_EMAIL || "info@schellenberger.biz");
 const DEFAULT_USER_AGENT = `pelletpreis-checker/0.1 (+contact: ${CONTACT_EMAIL})`;
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterMs(value) {
+  const v = String(value || "").trim();
+  if (!v) return null;
+  const sec = Number(v);
+  if (Number.isFinite(sec) && sec >= 0) return Math.min(60_000, sec * 1000);
+  const dt = Date.parse(v);
+  if (Number.isFinite(dt)) return Math.min(60_000, Math.max(0, dt - Date.now()));
+  return null;
+}
+
+function isRetryableStatus(status) {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+async function fetchWithRetry(url, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  const maxAttempts = Number(options.maxAttempts || (method === "GET" || method === "HEAD" ? 3 : 2));
+  const timeoutMs = Number(options.timeoutMs || 20_000);
+  const minDelayMs = Number(options.minDelayMs || 650);
+
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      if (!isRetryableStatus(res.status) || attempt === maxAttempts) return res;
+
+      const ra = parseRetryAfterMs(res.headers.get("retry-after"));
+      const backoff = Math.min(15_000, minDelayMs * Math.pow(2, attempt - 1));
+      const jitter = Math.floor(Math.random() * 250);
+      const waitMs = ra != null ? Math.max(ra, 400 + jitter) : backoff + jitter;
+      await sleep(waitMs);
+      continue;
+    } catch (err) {
+      lastErr = err;
+      const msg = err?.name === "AbortError" ? "Timeout" : err?.message || String(err);
+      const retryableNetwork = /ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|fetch failed/i.test(msg) || err?.name === "AbortError";
+      if (!retryableNetwork || attempt === maxAttempts) throw err;
+
+      const backoff = Math.min(15_000, minDelayMs * Math.pow(2, attempt - 1));
+      const jitter = Math.floor(Math.random() * 250);
+      await sleep(backoff + jitter);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  if (lastErr) throw lastErr;
+  return fetch(url, options);
+}
+
 function computeDemoPrice({ query }) {
   const pc = Number(query.postalCode.slice(-2));
   const regionFactor = 0.6 + (pc % 9) * 0.02;
@@ -38,7 +95,7 @@ async function fetchWithCookieJar(url, { jar, method = "GET", headers = {}, body
     if (cookie) h.set("cookie", cookie);
   }
 
-  const res = await fetch(url, { method, headers: h, body, redirect });
+  const res = await fetchWithRetry(url, { method, headers: h, body, redirect });
 
   const setCookies = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
   if (Array.isArray(setCookies)) {
@@ -129,7 +186,7 @@ async function scrapeHolzpelletsNetBestOffer({ query }) {
   const initRes = await fetchWithCookieJar(`${base}/FE_ORDER/FE_AJAX/fe_ajax_show_price.php`, {
     jar,
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded; charset=utf-8", "user-agent": "pelletpreise-local/0.1 (+local)", accept: "application/json,*/*" },
+    headers: { "content-type": "application/x-www-form-urlencoded; charset=utf-8", accept: "application/json,*/*" },
     body: toFormUrlEncoded({ oid, liefermenge: String(liefermengeKg), width: "1200", height: "800" }),
     redirect: "follow",
   });
@@ -143,7 +200,7 @@ async function scrapeHolzpelletsNetBestOffer({ query }) {
     for (const [k, v] of Object.entries(params || {})) url.searchParams.set(k, String(v));
     const r = await fetchWithCookieJar(url.toString(), {
       jar,
-      headers: { "user-agent": "pelletpreise-local/0.1 (+local)", accept: "application/json,*/*" },
+      headers: { accept: "application/json,*/*" },
       redirect: "follow",
     });
     const j = await r.json().catch(() => null);
@@ -382,7 +439,7 @@ async function scrapeHeizPellets24BestOffer({ query }) {
     options,
   )}&ap=0&pcert=${encodeURIComponent(pcert)}&lbp=0`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     redirect: "follow",
     headers: {
       "user-agent": DEFAULT_USER_AGENT,
@@ -392,7 +449,7 @@ async function scrapeHeizPellets24BestOffer({ query }) {
       accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     },
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status} beim Abruf.`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} beim Abruf (HeizPellets24 Angebotsliste).`);
   const html = await res.text();
 
   if (html.includes("dealer-card--outer-wrapper")) {
@@ -410,7 +467,7 @@ async function scrapeHeizPellets24BestOffer({ query }) {
   }
 
   const browser = await playwright.chromium.launch({ headless: true });
-  const context = await browser.newContext({ userAgent: "pelletpreise-local/0.1 (+local)" });
+  const context = await browser.newContext({ userAgent: DEFAULT_USER_AGENT });
   const page = await context.newPage();
   try {
     await page.goto(url, { waitUntil: "domcontentloaded" });
@@ -448,7 +505,7 @@ async function scrapeHttpRegex({ source, query, baseUrl }) {
     body = applyPlaceholders(String(source?.request?.bodyTemplate || ""), query);
   }
 
-  const res = await fetch(url, { method, body, redirect: "follow", headers });
+  const res = await fetchWithRetry(url, { method, body, redirect: "follow", headers });
   if (!res.ok) throw new Error(`HTTP ${res.status} beim Abruf.`);
   const html = await res.text();
 
@@ -489,7 +546,7 @@ async function scrapePlaywright({ source, query, baseUrl, sharedBrowser }) {
   }
 
   const browser = sharedBrowser || (await playwright.chromium.launch({ headless: true }));
-  const context = await browser.newContext({ userAgent: "pelletpreise-local/0.1 (+local)" });
+  const context = await browser.newContext({ userAgent: DEFAULT_USER_AGENT });
   const page = await context.newPage();
 
   try {

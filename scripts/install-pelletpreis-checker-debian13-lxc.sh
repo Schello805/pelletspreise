@@ -18,6 +18,7 @@ set -euo pipefail
 #
 # Optional:
 #   sudo HOST="127.0.0.1" PORT="8000" CONTACT_EMAIL="info@schellenberger.biz" INSTALL_PLAYWRIGHT="0" bash scripts/install-pelletpreis-checker-debian13-lxc.sh
+#   sudo INSTALL_SQLITE="1" bash scripts/install-pelletpreis-checker-debian13-lxc.sh
 
 APP_NAME="${APP_NAME:-pelletpreis-checker}"
 APP_USER="${APP_USER:-pelletpreise}"
@@ -31,6 +32,7 @@ BASE_URL="${BASE_URL:-http://$HOST:$PORT}"
 CONTACT_EMAIL="${CONTACT_EMAIL:-info@schellenberger.biz}"
 
 INSTALL_PLAYWRIGHT="${INSTALL_PLAYWRIGHT:-0}"
+INSTALL_SQLITE="${INSTALL_SQLITE:-0}"
 
 ENV_FILE="${ENV_FILE:-/etc/${APP_NAME}.env}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
@@ -57,6 +59,15 @@ ensure_packages() {
     gnupg \
     nodejs \
     npm
+
+  if [[ "$INSTALL_SQLITE" == "1" ]]; then
+    log "Installing build deps for SQLite (better-sqlite3)…"
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      python3 \
+      pkg-config \
+      libsqlite3-dev
+  fi
 
   local node_major
   node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
@@ -125,6 +136,13 @@ install_deps() {
     sudo -u "$APP_USER" -H npm ci
   else
     sudo -u "$APP_USER" -H npm install
+  fi
+
+  if [[ "$INSTALL_SQLITE" == "1" ]]; then
+    log "Installing optional SQLite backend (better-sqlite3)…"
+    sudo -u "$APP_USER" -H npm install --no-save better-sqlite3
+  else
+    log "Skipping SQLite backend install (INSTALL_SQLITE=1 to enable; otherwise file-based storage is used)."
   fi
 
   if [[ "$INSTALL_PLAYWRIGHT" == "1" ]]; then
@@ -214,4 +232,3 @@ OUT
 }
 
 main "$@"
-

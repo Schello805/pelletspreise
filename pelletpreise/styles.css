@@ -247,6 +247,36 @@ body {
   border-radius: var(--pp-radius2);
 }
 
+.compare-series {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--pp-radius2);
+  max-height: 220px;
+  overflow: auto;
+}
+
+.compare-item {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+  user-select: none;
+}
+
+.compare-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+  opacity: 0.95;
+}
+
 .analysis-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

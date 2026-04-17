@@ -391,9 +391,9 @@
 	              <span class="help">Bei Händler-Gruppierung entstehen mehr Zeitreihen.</span>
 	            </label>
 
-	            <label class="field" style="display:flex; align-items:end;">
+	            <label class="field" style="display:flex; align-items:end; justify-content:flex-end;">
 	              <div style="display:flex; gap:10px; align-items:center; padding:10px 0;">
-	                <input id="dailyOnlyOrderable" type="checkbox" />
+	                <input id="dailyOnlyOrderable" type="checkbox" checked />
 	                <span class="label" style="margin:0;">nur bestellbar</span>
 	              </div>
 	              <span class="help">Filtert Tageswerte ohne Bestell-Link aus.</span>
@@ -418,6 +418,26 @@
 	              <span class="label">Serie</span>
 	              <select id="dailySeriesSelect"></select>
 	              <span class="help">Wähle eine Zeitreihe für Chart & Detailtabelle.</span>
+	            </label>
+
+	            <label class="field" style="grid-column: span 12;">
+	              <div class="row" style="gap:12px; align-items:center; justify-content:space-between;">
+	                <div class="row" style="gap:10px; align-items:center;">
+	                  <input id="dailyCompareMode" type="checkbox" checked />
+	                  <span class="label" style="margin:0;">Vergleich (mehrere Serien im Chart)</span>
+	                </div>
+	                <div class="row" style="gap:10px; align-items:center;">
+	                  <span class="muted" style="font-size:12px;">max.</span>
+	                  <select id="dailyCompareMax">
+	                    <option value="2">2</option>
+	                    <option value="3" selected>3</option>
+	                    <option value="4">4</option>
+	                    <option value="5">5</option>
+	                  </select>
+	                </div>
+	              </div>
+	              <div id="dailyCompareSeries" class="compare-series" style="margin-top:10px;"></div>
+	              <span class="help">Wähle die Serien für den Vergleich (wirkt nur auf den Chart).</span>
 	            </label>
 	          </div>
 

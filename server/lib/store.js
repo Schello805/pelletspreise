@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { getDb } from "./db.js";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function getPaths({ projectRoot }) {
@@ -76,6 +78,41 @@ export async function ensureDataFiles({ projectRoot }) {
   } catch {
     await fs.writeFile(paths.historyPath, "", "utf8");
   }
+
+  // If SQLite is available, ensure schema is ready (history + cache live there).
+  try {
+    const db = await getDb({ projectRoot });
+    if (db) {
+      const migrated = db.prepare("SELECT value FROM meta WHERE key = ?").get("migrated_history_jsonl")?.value === "1";
+      if (!migrated) {
+        const count = db.prepare("SELECT COUNT(1) AS c FROM history").get()?.c ?? 0;
+        if (Number(count) === 0) {
+          const raw = await fs.readFile(paths.historyPath, "utf8").catch(() => "");
+          const lines = raw.trim() ? raw.trim().split("\n") : [];
+          if (lines.length) {
+            const insert = db.prepare("INSERT INTO history (createdAt, json) VALUES (?, ?)");
+            const tx = db.transaction((batch) => {
+              for (const line of batch) {
+                try {
+                  const obj = JSON.parse(line);
+                  insert.run(String(obj?.retrievedAt || new Date().toISOString()), JSON.stringify(obj));
+                } catch {
+                  // ignore
+                }
+              }
+            });
+            tx(lines.slice(-200_000)); // safety cap
+          }
+        }
+        db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(
+          "migrated_history_jsonl",
+          "1",
+        );
+      }
+    }
+  } catch {
+    // ignore
+  }
   return paths;
 }
 
@@ -101,12 +138,34 @@ export async function resetSourcesToDefaults({ projectRoot }) {
 }
 
 export async function appendHistory({ projectRoot, item }) {
+  const db = await getDb({ projectRoot });
+  if (db) {
+    const createdAt = String(item?.retrievedAt || new Date().toISOString());
+    const json = JSON.stringify(item);
+    db.prepare("INSERT INTO history (createdAt, json) VALUES (?, ?)").run(createdAt, json);
+    return;
+  }
+
   const { historyPath } = await ensureDataFiles({ projectRoot });
   const line = `${JSON.stringify(item)}\n`;
   await fs.appendFile(historyPath, line, "utf8");
 }
 
 export async function readHistory({ projectRoot, limit = 80 }) {
+  const db = await getDb({ projectRoot });
+  if (db) {
+    const rows = db.prepare("SELECT json FROM history ORDER BY id DESC LIMIT ?").all(Math.max(1, Number(limit) || 80));
+    return rows
+      .map((r) => {
+        try {
+          return JSON.parse(r.json);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  }
+
   const { historyPath } = await ensureDataFiles({ projectRoot });
   const raw = await fs.readFile(historyPath, "utf8");
   const lines = raw.trim() ? raw.trim().split("\n") : [];
@@ -125,6 +184,24 @@ export async function readHistory({ projectRoot, limit = 80 }) {
 }
 
 export async function readHistoryAll({ projectRoot, maxLines = 50_000 } = {}) {
+  const db = await getDb({ projectRoot });
+  if (db) {
+    const limit = Math.max(1, Math.min(200_000, Number(maxLines) || 50_000));
+    const rows = db.prepare("SELECT json FROM history ORDER BY id DESC LIMIT ?").all(limit);
+    // Keep same semantics as file-based: return up to maxLines newest items, in chronological order (oldest -> newest).
+    const items = rows
+      .map((r) => {
+        try {
+          return JSON.parse(r.json);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .reverse();
+    return items;
+  }
+
   const { historyPath } = await ensureDataFiles({ projectRoot });
   const raw = await fs.readFile(historyPath, "utf8");
   const lines = raw.trim() ? raw.trim().split("\n") : [];
@@ -142,6 +219,12 @@ export async function readHistoryAll({ projectRoot, maxLines = 50_000 } = {}) {
 }
 
 export async function clearHistory({ projectRoot }) {
+  const db = await getDb({ projectRoot });
+  if (db) {
+    db.prepare("DELETE FROM history").run();
+    return;
+  }
+
   const { historyPath } = await ensureDataFiles({ projectRoot });
   await fs.writeFile(historyPath, "", "utf8");
 }

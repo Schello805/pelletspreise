@@ -1,8 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { getDb } from "./db.js";
+
 const TIME_ZONE = "Europe/Berlin";
 const CACHE_VERSION = 1;
+let triedMigrateToDb = false;
 
 function stableStringify(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -66,6 +69,47 @@ export async function writeCache({ projectRoot, cache }) {
 }
 
 export async function getCachedResult({ projectRoot, sourceId, query }) {
+  const db = await getDb({ projectRoot });
+  if (db) {
+    if (!triedMigrateToDb) {
+      triedMigrateToDb = true;
+      try {
+        const migrated = db.prepare("SELECT value FROM meta WHERE key = ?").get("migrated_cache_json")?.value === "1";
+        if (!migrated) {
+          const fileCache = await readCache({ projectRoot });
+          const today = berlinDateKey();
+          const insert = db.prepare(
+            "INSERT INTO cache (key, dateKey, storedAt, json) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET dateKey=excluded.dateKey, storedAt=excluded.storedAt, json=excluded.json",
+          );
+          const tx = db.transaction((entries) => {
+            for (const [k, v] of entries) {
+              if (!v || typeof v !== "object") continue;
+              if (v.dateKey !== today) continue;
+              if (!v.result || typeof v.result !== "object" || !v.result.ok) continue;
+              insert.run(String(k), today, String(v.storedAt || new Date().toISOString()), JSON.stringify(v.result));
+            }
+          });
+          tx(Object.entries(fileCache.items || {}));
+          db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run("migrated_cache_json", "1");
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const key = makeKey({ sourceId, query });
+    const row = db.prepare("SELECT json FROM cache WHERE key = ? AND dateKey = ?").get(key, berlinDateKey());
+    if (!row || !row.json) return null;
+    try {
+      const result = JSON.parse(row.json);
+      if (!result || typeof result !== "object") return null;
+      if (!result.ok) return null;
+      return { ...result, cached: true };
+    } catch {
+      return null;
+    }
+  }
+
   const cache = await readCache({ projectRoot });
   const key = makeKey({ sourceId, query });
   const item = cache.items[key];
@@ -80,6 +124,16 @@ export async function setCachedResult({ projectRoot, sourceId, query, result }) 
   if (!result || typeof result !== "object") return;
   if (!result.ok) return;
 
+  const db = await getDb({ projectRoot });
+  if (db) {
+    const key = makeKey({ sourceId, query });
+    const json = JSON.stringify(result);
+    db.prepare(
+      "INSERT INTO cache (key, dateKey, storedAt, json) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET dateKey=excluded.dateKey, storedAt=excluded.storedAt, json=excluded.json",
+    ).run(key, berlinDateKey(), new Date().toISOString(), json);
+    return;
+  }
+
   const cache = await readCache({ projectRoot });
   const key = makeKey({ sourceId, query });
   cache.items[key] = {
@@ -91,6 +145,12 @@ export async function setCachedResult({ projectRoot, sourceId, query, result }) 
 }
 
 export async function pruneCache({ projectRoot }) {
+  const db = await getDb({ projectRoot });
+  if (db) {
+    db.prepare("DELETE FROM cache WHERE dateKey <> ?").run(berlinDateKey());
+    return;
+  }
+
   const cache = await readCache({ projectRoot });
   const today = berlinDateKey();
   const nextItems = {};
@@ -99,4 +159,3 @@ export async function pruneCache({ projectRoot }) {
   }
   await writeCache({ projectRoot, cache: { version: CACHE_VERSION, items: nextItems } });
 }
-
