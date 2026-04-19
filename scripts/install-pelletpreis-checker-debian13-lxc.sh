@@ -19,6 +19,7 @@ set -euo pipefail
 # Optional:
 #   sudo HOST="127.0.0.1" PORT="8000" CONTACT_EMAIL="info@schellenberger.biz" INSTALL_PLAYWRIGHT="0" bash scripts/install-pelletpreis-checker-debian13-lxc.sh
 #   sudo INSTALL_SQLITE="1" bash scripts/install-pelletpreis-checker-debian13-lxc.sh
+#   sudo INSTALL_PLAYWRIGHT="1" PLAYWRIGHT_WITH_DEPS="1" bash scripts/install-pelletpreis-checker-debian13-lxc.sh
 
 APP_NAME="${APP_NAME:-pelletpreis-checker}"
 APP_USER="${APP_USER:-pelletpreise}"
@@ -33,6 +34,7 @@ CONTACT_EMAIL="${CONTACT_EMAIL:-info@schellenberger.biz}"
 
 INSTALL_PLAYWRIGHT="${INSTALL_PLAYWRIGHT:-0}"
 INSTALL_SQLITE="${INSTALL_SQLITE:-0}"
+PLAYWRIGHT_WITH_DEPS="${PLAYWRIGHT_WITH_DEPS:-0}"
 
 ENV_FILE="${ENV_FILE:-/etc/${APP_NAME}.env}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
@@ -179,8 +181,13 @@ install_deps() {
   fi
 
   if [[ "$INSTALL_PLAYWRIGHT" == "1" ]]; then
-    log "Installing Playwright browsers (this can be large)…"
-    sudo -u "$APP_USER" -H npx playwright install --with-deps
+    log "Installing Playwright browser (Chromium)…"
+    if [[ "$PLAYWRIGHT_WITH_DEPS" == "1" ]]; then
+      log "Installing Playwright system dependencies (requires root, can be large)…"
+      npx playwright install --with-deps chromium
+    else
+      sudo -u "$APP_USER" -H npx playwright install chromium
+    fi
   else
     log "Skipping Playwright browser install (INSTALL_PLAYWRIGHT=1 to enable)."
   fi
