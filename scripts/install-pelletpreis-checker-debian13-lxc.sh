@@ -37,6 +37,7 @@ INSTALL_SQLITE="${INSTALL_SQLITE:-0}"
 ENV_FILE="${ENV_FILE:-/etc/${APP_NAME}.env}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 NODE_BIN="${NODE_BIN:-}"
+LXC_COMPAT="${LXC_COMPAT:-1}"
 
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
@@ -142,6 +143,24 @@ ensure_runtime_dirs() {
   chown -R "$APP_USER:$APP_GROUP" "$APP_DIR/server/data"
 }
 
+write_lxc_compat_override() {
+  # In some Proxmox/LXC setups, systemd sandboxing (mount namespaces) can fail with status=226/NAMESPACE.
+  # This drop-in disables the mount-namespace hardening so the service starts reliably.
+  if [[ "$LXC_COMPAT" != "1" ]]; then
+    return
+  fi
+  local dir="/etc/systemd/system/${APP_NAME}.service.d"
+  mkdir -p "$dir"
+  cat >"${dir}/override.conf" <<EOF
+[Service]
+NoNewPrivileges=no
+PrivateTmp=no
+ProtectSystem=no
+ProtectHome=no
+ReadWritePaths=
+EOF
+}
+
 install_deps() {
   log "Installing npm dependencies…"
   cd "$APP_DIR"
@@ -206,6 +225,7 @@ ReadWritePaths=${APP_DIR}/server/data
 WantedBy=multi-user.target
 EOF
 
+  write_lxc_compat_override
   systemctl daemon-reload
   systemctl enable --now "${APP_NAME}.service"
 }
