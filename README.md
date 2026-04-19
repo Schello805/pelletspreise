@@ -5,6 +5,23 @@ Lokale Webapp (ohne Build-Step) zum Abrufen und Vergleichen von Pelletpreisen au
 - Frontend: `pelletpreise/`
 - Backend/API: `server/`
 
+## Installation
+
+### Lokal (Entwicklung)
+
+Voraussetzungen: Node.js (>= 18)
+
+1. Abhängigkeiten installieren:
+   - `npm ci`
+2. Server starten:
+   - `node server/server.js`
+3. Öffnen:
+   - `http://127.0.0.1:8000/pelletpreise/`
+
+Optional (für Playwright-Quellen wie „HeizPellets24 Angebotsliste“):
+
+- `npx playwright install chromium`
+
 ## Quickstart
 
 1. Abhängigkeiten installieren:
@@ -39,6 +56,14 @@ Optional (Playwright Browser installieren – groß):
 Optional (SQLite statt JSON-Dateien, empfohlen bei viel Historie):
 
 - `sudo INSTALL_SQLITE=1 bash scripts/install-pelletpreis-checker-debian13-lxc.sh`
+
+## Update (Debian 13 / Proxmox LXC)
+
+- `sudo bash scripts/update-pelletpreis-checker-debian13-lxc.sh`
+
+Wenn dein Install ohne `.git` gemacht wurde (Copy-Install), gib beim Update die Repo-URL an:
+
+- `sudo REPO_URL="https://github.com/<you>/<repo>.git" bash scripts/update-pelletpreis-checker-debian13-lxc.sh`
 
 ## Lizenz
 
