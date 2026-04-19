@@ -36,6 +36,7 @@ INSTALL_SQLITE="${INSTALL_SQLITE:-0}"
 
 ENV_FILE="${ENV_FILE:-/etc/${APP_NAME}.env}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
+NODE_BIN="${NODE_BIN:-}"
 
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
@@ -74,6 +75,12 @@ ensure_packages() {
   if [[ "$node_major" -lt 18 ]]; then
     echo "Node.js >= 18 is required. Found: $(node -v 2>/dev/null || echo 'unknown')." >&2
     echo "Install a newer Node.js (e.g. via your preferred method) and re-run this script." >&2
+    exit 1
+  fi
+
+  NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+  if [[ -z "$NODE_BIN" ]]; then
+    echo "Could not find 'node' in PATH." >&2
     exit 1
   fi
 }
@@ -128,6 +135,13 @@ checkout_repo() {
   chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 }
 
+ensure_runtime_dirs() {
+  # The installer excludes server/data when copying (to preserve runtime data). On first install it won't exist,
+  # but systemd hardening (ReadWritePaths) requires it to be present.
+  mkdir -p "$APP_DIR/server/data"
+  chown -R "$APP_USER:$APP_GROUP" "$APP_DIR/server/data"
+}
+
 install_deps() {
   log "Installing npm dependencies…"
   cd "$APP_DIR"
@@ -179,7 +193,7 @@ User=${APP_USER}
 Group=${APP_GROUP}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=/usr/bin/node ${APP_DIR}/server/server.js
+ExecStart=${NODE_BIN} ${APP_DIR}/server/server.js
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
@@ -212,6 +226,7 @@ main() {
   ensure_packages
   ensure_user
   checkout_repo
+  ensure_runtime_dirs
   install_deps
   write_env_file
   write_service
