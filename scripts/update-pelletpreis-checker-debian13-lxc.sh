@@ -33,6 +33,9 @@ INSTALL_SQLITE="${INSTALL_SQLITE:-auto}"
 # If set, run Playwright browser install after updating.
 INSTALL_PLAYWRIGHT="${INSTALL_PLAYWRIGHT:-0}"
 PLAYWRIGHT_WITH_DEPS="${PLAYWRIGHT_WITH_DEPS:-0}"
+# In some Proxmox/LXC setups, systemd sandboxing (mount namespaces) can fail with status=226/NAMESPACE.
+# This drop-in disables the mount-namespace hardening so the service starts reliably.
+LXC_COMPAT="${LXC_COMPAT:-1}"
 
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
@@ -58,6 +61,27 @@ ensure_rsync() {
 ensure_runtime_dirs() {
   mkdir -p "$APP_DIR/server/data"
   chown -R "$APP_USER:$APP_GROUP" "$APP_DIR/server/data"
+}
+
+ensure_lxc_compat_override() {
+  if [[ "$LXC_COMPAT" != "1" ]]; then
+    return
+  fi
+  local unit="/etc/systemd/system/${APP_NAME}.service"
+  if [[ ! -f "$unit" ]]; then
+    return
+  fi
+  local dir="/etc/systemd/system/${APP_NAME}.service.d"
+  mkdir -p "$dir"
+  cat >"${dir}/override.conf" <<EOF
+[Service]
+NoNewPrivileges=no
+PrivateTmp=no
+ProtectSystem=no
+ProtectHome=no
+ReadWritePaths=
+EOF
+  systemctl daemon-reload
 }
 
 stop_service() {
@@ -204,6 +228,7 @@ main() {
   fi
 
   ensure_runtime_dirs
+  ensure_lxc_compat_override
   install_deps
   install_optional_sqlite "$had_sqlite"
   install_playwright_browsers
