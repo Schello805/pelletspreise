@@ -18,6 +18,7 @@ set -euo pipefail
 #
 # Optional:
 #   sudo BRANCH="main" INSTALL_SQLITE="1" INSTALL_PLAYWRIGHT="1" bash scripts/update-pelletpreis-checker-debian13-lxc.sh
+#   sudo INSTALL_PLAYWRIGHT="1" PLAYWRIGHT_WITH_DEPS="1" bash scripts/update-pelletpreis-checker-debian13-lxc.sh
 
 APP_NAME="${APP_NAME:-pelletpreis-checker}"
 APP_USER="${APP_USER:-pelletpreise}"
@@ -167,7 +168,8 @@ install_playwright_browsers() {
   log "Installing Playwright browsers…"
   cd "$APP_DIR"
   if [[ "$PLAYWRIGHT_WITH_DEPS" == "1" ]]; then
-    sudo -u "$APP_USER" -H npx playwright install --with-deps chromium
+    log "Installing Playwright system dependencies (requires root, can be large)…"
+    npx playwright install --with-deps chromium
   else
     sudo -u "$APP_USER" -H npx playwright install chromium
   fi
