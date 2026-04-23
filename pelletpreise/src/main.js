@@ -205,7 +205,7 @@ function renderResults({ query, results }) {
 function renderSources(sources) {
   const body = $("sourcesBody");
   if (!sources.length) {
-    body.innerHTML = `<tr><td colspan="5" class="muted">Keine Quellen angelegt.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="muted">Keine Quellen angelegt.</td></tr>`;
     return;
   }
 
@@ -213,10 +213,19 @@ function renderSources(sources) {
     .map((s) => {
       const enabled = s.enabled ? "checked" : "";
       const last = s.lastRunAt ? fmtTime(s.lastRunAt) : "—";
+      const historyMode = String(s.historyMode || "auto");
+      const hm = (value, label) => `<option value="${escapeAttr(value)}"${historyMode === value ? " selected" : ""}>${escapeHtml(label)}</option>`;
       return `<tr>
         <td><input type="checkbox" data-action="toggle" data-id="${escapeAttr(s.id)}" ${enabled} /></td>
         <td>${escapeHtml(s.name)}</td>
         <td class="muted">${escapeHtml(s.kind)}</td>
+        <td>
+          <select class="form-select form-select-sm" data-action="historyMode" data-id="${escapeAttr(s.id)}" aria-label="Statistik">
+            ${hm("auto", "Auto")}
+            ${hm("best", "Best")}
+            ${hm("none", "Off")}
+          </select>
+        </td>
         <td class="muted">${escapeHtml(last)}</td>
         <td class="right">
           <button class="btn btn-outline-light btn-sm" type="button" data-action="edit" data-id="${escapeAttr(s.id)}">Bearbeiten</button>
@@ -490,16 +499,26 @@ function setupEvents() {
 
   $("sourcesBody").addEventListener("change", async (e) => {
     const cb = e.target?.closest?.('input[type="checkbox"][data-action="toggle"]');
-    if (!cb) return;
-    const id = cb.dataset.id;
+    const hm = e.target?.closest?.('select[data-action="historyMode"]');
+    const el = cb || hm;
+    if (!el) return;
+    const id = el.dataset.id;
     const src = state.sources.find((s) => s.id === id);
     if (!src) return;
     try {
-      await apiFetch(`/api/sources/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ source: { enabled: cb.checked } }) });
+      if (cb) {
+        await apiFetch(`/api/sources/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ source: { enabled: cb.checked } }) });
+      } else if (hm) {
+        await apiFetch(`/api/sources/${encodeURIComponent(id)}`, {
+          method: "PUT",
+          body: JSON.stringify({ source: { historyMode: String(hm.value || "auto") } }),
+        });
+      }
       await refreshSources();
       toast("Aktualisiert.", { kind: "success" });
     } catch (err) {
-      cb.checked = !cb.checked;
+      if (cb) cb.checked = !cb.checked;
+      if (hm) hm.value = String(src.historyMode || "auto");
       toast(err.message || "Fehler", { kind: "error" });
     }
   });

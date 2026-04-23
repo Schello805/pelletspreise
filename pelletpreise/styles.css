@@ -45,6 +45,22 @@ body {
   gap: 12px;
 }
 
+.actions-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.actions-inline .form-check {
+  margin: 0;
+}
+
+.actions-inline .form-check-label {
+  font-size: 12px;
+}
+
 /* Form layout (Bootstrap-friendly, no class collisions) */
 .grid {
   display: grid;
