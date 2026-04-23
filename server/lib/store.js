@@ -50,6 +50,7 @@ export async function ensureDataFiles({ projectRoot }) {
           ...def,
           enabled: cur.enabled ?? def.enabled,
           lastRunAt: cur.lastRunAt ?? def.lastRunAt ?? null,
+          historyMode: cur.historyMode ?? def.historyMode ?? null,
         });
       } else {
         merged.push(def);

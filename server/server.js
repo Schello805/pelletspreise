@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { appendHistory, clearHistory, readHistory, readHistoryAll, readSources, resetSourcesToDefaults, writeSources } from "./lib/store.js";
 import { getCachedResult, pruneCache, setCachedResult } from "./lib/cache.js";
 import { dailyRowsToCsv, getDailyHistory, rawItemsToCsv } from "./lib/history.js";
+import { checkScrapeAllowance, readRunsToday, recordRun } from "./lib/rateLimit.js";
+import { berlinDateKey, berlinHour, patchSettings, readSettings, writeSettings } from "./lib/settings.js";
 import { jsonResponse, newId, normalizeQuery, readJsonBody, textResponse } from "./lib/util.js";
 import { runSource } from "./scrape/runner.js";
 
@@ -19,6 +21,158 @@ const HOST = String(process.env.HOST || "127.0.0.1");
 const BASE_URL = String(process.env.BASE_URL || `http://${HOST}:${PORT}`);
 const APP_VERSION = "0.1.0";
 
+async function scrapeRunInternal({ query, onlyDemo = false } = {}) {
+  const sources = await readSources({ projectRoot });
+  const enabled = sources.filter((s) => s.enabled);
+  const selected = onlyDemo ? enabled.filter((s) => s.kind === "demo") : enabled;
+
+  await pruneCache({ projectRoot }).catch(() => {});
+
+  const results = [];
+
+  // 1) Cache pre-check for all selected sources (so we can enforce an overall daily limit
+  // only when at least one source would actually run).
+  const cachedChecks = await withLimit(
+    6,
+    selected.map((s) => async () => ({ source: s, cached: await getCachedResult({ projectRoot, sourceId: s.id, query }) })),
+  );
+
+  const httpToRun = [];
+  const pwToRun = [];
+  for (const item of cachedChecks) {
+    if (item?.cached) {
+      const nowIso = new Date().toISOString();
+      results.push({
+        ...item.cached,
+        cached: true,
+        cachedFromRetrievedAt: item.cached?.retrievedAt || null,
+        retrievedAt: nowIso,
+      });
+    } else if (item?.source?.kind === "playwright") pwToRun.push(item.source);
+    else if (item?.source) httpToRun.push(item.source);
+  }
+
+  const needsFreshRun = httpToRun.length > 0 || pwToRun.length > 0;
+  if (needsFreshRun) {
+    const allowance = await checkScrapeAllowance({ projectRoot });
+    if (!allowance.allowed) {
+      const err = new Error(allowance.error || "Abfrage nicht erlaubt.");
+      err.statusCode = allowance.statusCode || 429;
+      err.details = allowance.details || {};
+      throw err;
+    }
+    await recordRun({ projectRoot }).catch(() => {});
+  }
+
+  // 2) HTTP-ish sources (concurrent)
+  const httpTasks = httpToRun.map((s) => async () => {
+    const fresh = await runSource({ source: s, query, baseUrl: BASE_URL });
+    await setCachedResult({ projectRoot, sourceId: s.id, query, result: fresh }).catch(() => {});
+    return fresh;
+  });
+  results.push(...(await withLimit(4, httpTasks)));
+
+  // 3) Playwright sources (launch browser only if needed)
+  if (pwToRun.length) {
+    let playwrightBrowser = null;
+    try {
+      const playwright = await import("playwright");
+      playwrightBrowser = await playwright.chromium.launch({ headless: true });
+    } catch {
+      playwrightBrowser = null;
+    }
+    try {
+      const pwTasks = pwToRun.map((s) => async () => {
+        const fresh = await runSource({ source: s, query, baseUrl: BASE_URL, sharedBrowser: playwrightBrowser });
+        await setCachedResult({ projectRoot, sourceId: s.id, query, result: fresh }).catch(() => {});
+        return fresh;
+      });
+      results.push(...(await withLimit(2, pwTasks)));
+    } finally {
+      if (playwrightBrowser) await playwrightBrowser.close().catch(() => {});
+    }
+  }
+
+  const now = new Date().toISOString();
+  const updatedSources = sources.map((s) => {
+    if (!selected.some((sel) => sel.id === s.id)) return s;
+    return { ...s, lastRunAt: now };
+  });
+  await writeSources({ projectRoot, sources: updatedSources });
+
+  const historyModeById = new Map(updatedSources.map((s) => [String(s?.id || ""), normalizeHistoryMode(s?.historyMode)]));
+
+  for (const r of results) {
+    // Only persist non-cached runs (so daily caching keeps history clean).
+    if (r && r.cached) continue;
+    const sourceId = String(r?.sourceId || "");
+    const mode = historyModeById.get(sourceId) || "auto";
+    const prepared = applyHistoryModeToResult({ ...r, query }, mode);
+    if (!prepared) continue;
+    await appendHistory({ projectRoot, item: prepared });
+  }
+
+  const sorted = results.slice().sort((a, b) => {
+    if (a.ok && b.ok) return (a.priceEurPerTon ?? Infinity) - (b.priceEurPerTon ?? Infinity);
+    if (a.ok) return -1;
+    if (b.ok) return 1;
+    return 0;
+  });
+
+  return { ok: true, query, results: sorted, meta: { needsFreshRun } };
+}
+
+async function tryAutoDailyScrape({ force = false } = {}) {
+  const settings = await readSettings({ projectRoot });
+  if (!settings.autoDailyEnabled) return { ok: true, skipped: true, reason: "disabled" };
+
+  const now = new Date();
+  const todayKey = berlinDateKey(now);
+  if (!force && settings.lastAutoRunDateKey === todayKey) return { ok: true, skipped: true, reason: "already_ran" };
+
+  const h = berlinHour(now);
+  if (!force && typeof h === "number" && h < Number(settings.autoDailyMinHour || 0)) return { ok: true, skipped: true, reason: "too_early" };
+
+  // If there was any fresh run today, we already have today's data -> do not auto-run again.
+  const runsToday = await readRunsToday({ projectRoot, now }).catch(() => []);
+  if (!force && runsToday.length) {
+    await writeSettings({
+      projectRoot,
+      settings: { ...settings, lastAutoRunDateKey: todayKey, lastAutoRunAt: now.toISOString(), lastAutoError: null },
+    }).catch(() => {});
+    return { ok: true, skipped: true, reason: "already_has_data" };
+  }
+
+  let normalizedQuery = null;
+  try {
+    normalizedQuery = normalizeQuery(settings.lastQuery || {});
+  } catch {
+    normalizedQuery = null;
+  }
+  if (!normalizedQuery) {
+    await writeSettings({
+      projectRoot,
+      settings: { ...settings, lastAutoRunDateKey: todayKey, lastAutoRunAt: now.toISOString(), lastAutoError: "Keine gültige Abfrage hinterlegt." },
+    }).catch(() => {});
+    return { ok: false, skipped: true, reason: "no_query" };
+  }
+
+  try {
+    await scrapeRunInternal({ query: normalizedQuery, onlyDemo: false });
+    await writeSettings({
+      projectRoot,
+      settings: { ...settings, lastAutoRunDateKey: todayKey, lastAutoRunAt: new Date().toISOString(), lastAutoError: null },
+    }).catch(() => {});
+    return { ok: true, skipped: false };
+  } catch (err) {
+    await writeSettings({
+      projectRoot,
+      settings: { ...settings, lastAutoRunDateKey: todayKey, lastAutoRunAt: new Date().toISOString(), lastAutoError: err?.message || String(err) },
+    }).catch(() => {});
+    return { ok: false, skipped: false, error: err?.message || String(err) };
+  }
+}
+
 function normalizeExtract(ex) {
   if (!ex || typeof ex !== "object") return null;
   const out = {};
@@ -26,6 +180,53 @@ function normalizeExtract(ex) {
   if (ex.regexAsOf) out.regexAsOf = String(ex.regexAsOf);
   if (ex.regexTotal) out.regexTotal = String(ex.regexTotal);
   return Object.keys(out).length ? out : null;
+}
+
+function normalizeHistoryMode(value) {
+  const v = String(value || "").trim().toLowerCase();
+  if (!v) return "auto";
+  if (v === "none" || v === "off") return "none";
+  if (v === "best" || v === "best-only" || v === "beste") return "best";
+  if (v === "auto") return "auto";
+  return "auto";
+}
+
+function pickBestOfferFromList(offers) {
+  const list = Array.isArray(offers) ? offers : [];
+  let best = null;
+  for (const o of list) {
+    if (!o || typeof o !== "object") continue;
+    const total = typeof o.totalEur === "number" ? o.totalEur : Number.POSITIVE_INFINITY;
+    const perTon = typeof o.priceEurPerTon === "number" ? o.priceEurPerTon : Number.POSITIVE_INFINITY;
+    if (!best) {
+      best = o;
+      continue;
+    }
+    const bestTotal = typeof best.totalEur === "number" ? best.totalEur : Number.POSITIVE_INFINITY;
+    const bestPerTon = typeof best.priceEurPerTon === "number" ? best.priceEurPerTon : Number.POSITIVE_INFINITY;
+    if (total < bestTotal) best = o;
+    else if (total === bestTotal && perTon < bestPerTon) best = o;
+  }
+  return best;
+}
+
+function applyHistoryModeToResult(result, historyMode) {
+  const mode = normalizeHistoryMode(historyMode);
+  if (mode === "none") return null;
+  if (mode !== "best") return result;
+
+  if (result && typeof result === "object" && Array.isArray(result.offers) && result.offers.length) {
+    const best = pickBestOfferFromList(result.offers);
+    if (!best) return { ...result, offers: [] };
+    return {
+      ...result,
+      bestDealerName: result.bestDealerName ?? best.dealerName ?? null,
+      priceEurPerTon: typeof best.priceEurPerTon === "number" ? best.priceEurPerTon : result.priceEurPerTon ?? null,
+      totalEur: typeof best.totalEur === "number" ? best.totalEur : result.totalEur ?? null,
+      offers: [best],
+    };
+  }
+  return result;
 }
 
 function resolveFrontendPath(urlPath) {
@@ -109,6 +310,20 @@ function demoHtml({ query }) {
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/health") {
     return jsonResponse(res, 200, { ok: true, version: APP_VERSION, baseUrl: BASE_URL });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/settings") {
+    const settings = await readSettings({ projectRoot });
+    return jsonResponse(res, 200, { ok: true, settings });
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/settings") {
+    const body = (await readJsonBody(req)) || {};
+    const patch = body.settings || body.patch || body || {};
+    const current = await readSettings({ projectRoot });
+    const next = patchSettings(current, patch);
+    await writeSettings({ projectRoot, settings: next });
+    return jsonResponse(res, 200, { ok: true, settings: next });
   }
 
   if (req.method === "GET" && url.pathname === "/api/debug/heizpellets24-offer") {
@@ -210,26 +425,27 @@ async function handleApi(req, res, url) {
     const sources = body?.data?.sources;
     if (!Array.isArray(sources)) return jsonResponse(res, 400, { error: "Import-Format ungültig (sources fehlt)." });
 
-    const normalized = sources.map((s) => ({
-      id: String(s.id || newId("src")),
-      name: String(s.name || "Quelle").slice(0, 120),
-      enabled: Boolean(s.enabled),
-      group: s.group != null ? String(s.group) : null,
-      kind: String(s.kind || "http-regex"),
-      url: s.url != null ? String(s.url) : null,
-      extract: normalizeExtract(s.extract),
-      request:
-        s.request && typeof s.request === "object"
-          ? {
-              ...(s.request.method ? { method: String(s.request.method).toUpperCase() } : {}),
-              ...(s.request.contentType ? { contentType: String(s.request.contentType) } : {}),
+	    const normalized = sources.map((s) => ({
+	      id: String(s.id || newId("src")),
+	      name: String(s.name || "Quelle").slice(0, 120),
+	      enabled: Boolean(s.enabled),
+	      group: s.group != null ? String(s.group) : null,
+	      kind: String(s.kind || "http-regex"),
+	      url: s.url != null ? String(s.url) : null,
+	      extract: normalizeExtract(s.extract),
+	      historyMode: normalizeHistoryMode(s.historyMode),
+	      request:
+	        s.request && typeof s.request === "object"
+	          ? {
+	              ...(s.request.method ? { method: String(s.request.method).toUpperCase() } : {}),
+	              ...(s.request.contentType ? { contentType: String(s.request.contentType) } : {}),
               ...(s.request.bodyTemplate ? { bodyTemplate: String(s.request.bodyTemplate) } : {}),
               ...(s.request.headers && typeof s.request.headers === "object" ? { headers: s.request.headers } : {}),
             }
           : null,
-      steps: Array.isArray(s.steps) ? s.steps : null,
-      lastRunAt: s.lastRunAt || null,
-    }));
+	      steps: Array.isArray(s.steps) ? s.steps : null,
+	      lastRunAt: s.lastRunAt || null,
+	    }));
     await writeSources({ projectRoot, sources: normalized });
     return jsonResponse(res, 200, { ok: true, count: normalized.length });
   }
@@ -246,19 +462,20 @@ async function handleApi(req, res, url) {
     const sources = await readSources({ projectRoot });
     const id = newId("src");
 
-    const next = {
-      id,
-      name: String(s.name || "Quelle").slice(0, 120),
-      enabled: Boolean(s.enabled ?? true),
-      group: s.group != null ? String(s.group) : null,
-      kind: String(s.kind || "http-regex"),
-      url: s.url != null ? String(s.url) : null,
-      extract: normalizeExtract(s.extract),
-      request:
-        s.request && typeof s.request === "object"
-          ? {
-              ...(s.request.method ? { method: String(s.request.method).toUpperCase() } : {}),
-              ...(s.request.contentType ? { contentType: String(s.request.contentType) } : {}),
+	    const next = {
+	      id,
+	      name: String(s.name || "Quelle").slice(0, 120),
+	      enabled: Boolean(s.enabled ?? true),
+	      group: s.group != null ? String(s.group) : null,
+	      kind: String(s.kind || "http-regex"),
+	      url: s.url != null ? String(s.url) : null,
+	      extract: normalizeExtract(s.extract),
+	      historyMode: normalizeHistoryMode(s.historyMode),
+	      request:
+	        s.request && typeof s.request === "object"
+	          ? {
+	              ...(s.request.method ? { method: String(s.request.method).toUpperCase() } : {}),
+	              ...(s.request.contentType ? { contentType: String(s.request.contentType) } : {}),
               ...(s.request.bodyTemplate ? { bodyTemplate: String(s.request.bodyTemplate) } : {}),
               ...(s.request.headers && typeof s.request.headers === "object" ? { headers: s.request.headers } : {}),
             }
@@ -280,19 +497,20 @@ async function handleApi(req, res, url) {
     if (idx < 0) return jsonResponse(res, 404, { error: "Quelle nicht gefunden." });
     const current = sources[idx];
 
-    const updated = {
-      ...current,
-      ...(patch.name != null ? { name: String(patch.name).slice(0, 120) } : {}),
-      ...(patch.enabled != null ? { enabled: Boolean(patch.enabled) } : {}),
-      ...(patch.group !== undefined ? { group: patch.group != null ? String(patch.group) : null } : {}),
-      ...(patch.kind != null ? { kind: String(patch.kind) } : {}),
-      ...(patch.url !== undefined ? { url: patch.url != null ? String(patch.url) : null } : {}),
-      ...(patch.extract !== undefined ? { extract: normalizeExtract(patch.extract) } : {}),
-      ...(patch.request !== undefined
-        ? {
-            request:
-              patch.request && typeof patch.request === "object"
-                ? {
+	    const updated = {
+	      ...current,
+	      ...(patch.name != null ? { name: String(patch.name).slice(0, 120) } : {}),
+	      ...(patch.enabled != null ? { enabled: Boolean(patch.enabled) } : {}),
+	      ...(patch.group !== undefined ? { group: patch.group != null ? String(patch.group) : null } : {}),
+	      ...(patch.kind != null ? { kind: String(patch.kind) } : {}),
+	      ...(patch.url !== undefined ? { url: patch.url != null ? String(patch.url) : null } : {}),
+	      ...(patch.extract !== undefined ? { extract: normalizeExtract(patch.extract) } : {}),
+	      ...(patch.historyMode !== undefined ? { historyMode: normalizeHistoryMode(patch.historyMode) } : {}),
+	      ...(patch.request !== undefined
+	        ? {
+	            request:
+	              patch.request && typeof patch.request === "object"
+	                ? {
                     ...(patch.request.method ? { method: String(patch.request.method).toUpperCase() } : {}),
                     ...(patch.request.contentType ? { contentType: String(patch.request.contentType) } : {}),
                     ...(patch.request.bodyTemplate ? { bodyTemplate: String(patch.request.bodyTemplate) } : {}),
@@ -329,71 +547,18 @@ async function handleApi(req, res, url) {
     const body = (await readJsonBody(req)) || {};
     const query = normalizeQuery(body.query || {});
     const onlyDemo = Boolean(body.onlyDemo);
-    const sources = await readSources({ projectRoot });
-    const enabled = sources.filter((s) => s.enabled);
-    const selected = onlyDemo ? enabled.filter((s) => s.kind === "demo") : enabled;
+    // Persist last query so the auto-daily scheduler can run without user interaction.
+    const cur = await readSettings({ projectRoot });
+    await writeSettings({ projectRoot, settings: { ...cur, lastQuery: query } }).catch(() => {});
 
-    const httpish = selected.filter((s) => s.kind !== "playwright");
-    const playwrightSources = selected.filter((s) => s.kind === "playwright");
-
-    await pruneCache({ projectRoot }).catch(() => {});
-
-    const results = [];
-
-    const httpTasks = httpish.map((s) => async () => {
-      const cached = await getCachedResult({ projectRoot, sourceId: s.id, query });
-      if (cached) return cached;
-      const fresh = await runSource({ source: s, query, baseUrl: BASE_URL });
-      await setCachedResult({ projectRoot, sourceId: s.id, query, result: fresh }).catch(() => {});
-      return fresh;
-    });
-    results.push(...(await withLimit(4, httpTasks)));
-
-    if (playwrightSources.length) {
-      let playwrightBrowser = null;
-      try {
-        const playwright = await import("playwright");
-        playwrightBrowser = await playwright.chromium.launch({ headless: true });
-      } catch {
-        playwrightBrowser = null;
-      }
-      try {
-        for (const s of playwrightSources) {
-          const cached = await getCachedResult({ projectRoot, sourceId: s.id, query });
-          if (cached) {
-            results.push(cached);
-            continue;
-          }
-          const fresh = await runSource({ source: s, query, baseUrl: BASE_URL, sharedBrowser: playwrightBrowser });
-          await setCachedResult({ projectRoot, sourceId: s.id, query, result: fresh }).catch(() => {});
-          results.push(fresh);
-        }
-      } finally {
-        if (playwrightBrowser) await playwrightBrowser.close().catch(() => {});
-      }
+    try {
+      const data = await scrapeRunInternal({ query, onlyDemo });
+      return jsonResponse(res, 200, { ok: true, query: data.query, results: data.results });
+    } catch (err) {
+      const status = err?.statusCode || err?.status || 500;
+      const details = err?.details && typeof err.details === "object" ? err.details : {};
+      return jsonResponse(res, status, { error: err?.message || String(err), ...details });
     }
-
-    const now = new Date().toISOString();
-    const updatedSources = sources.map((s) => {
-      if (!selected.some((sel) => sel.id === s.id)) return s;
-      return { ...s, lastRunAt: now };
-    });
-    await writeSources({ projectRoot, sources: updatedSources });
-
-    for (const r of results) {
-      // Only persist non-cached runs (so daily caching also keeps history clean).
-      if (r && r.cached) continue;
-      await appendHistory({ projectRoot, item: { ...r, query } });
-    }
-
-    const sorted = results.slice().sort((a, b) => {
-      if (a.ok && b.ok) return (a.priceEurPerTon ?? Infinity) - (b.priceEurPerTon ?? Infinity);
-      if (a.ok) return -1;
-      if (b.ok) return 1;
-      return 0;
-    });
-
-    return jsonResponse(res, 200, { ok: true, query, results: sorted });
   }
 
   if (req.method === "GET" && url.pathname === "/api/history") {
@@ -510,4 +675,10 @@ const server = http.createServer(handle);
 server.listen(PORT, HOST, () => {
   // eslint-disable-next-line no-console
   console.log(`Pelletpreise-Server läuft: ${BASE_URL}/pelletpreise/`);
+
+  // Auto run: check periodically whether today's data is missing.
+  // We keep this lightweight (no background work when disabled / before the minimum hour).
+  const intervalMs = 10 * 60 * 1000;
+  tryAutoDailyScrape().catch(() => {});
+  setInterval(() => tryAutoDailyScrape().catch(() => {}), intervalMs).unref?.();
 });

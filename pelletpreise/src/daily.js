@@ -66,13 +66,6 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  const pad = { l: 58, r: 16, t: 18, b: 36 };
-  const innerW = w - pad.l - pad.r;
-  const innerH = h - pad.t - pad.b;
-
-  ctx.fillStyle = "rgba(255,255,255,0.02)";
-  ctx.fillRect(pad.l, pad.t, innerW, innerH);
-
   const allValues = [];
   for (const s of seriesList) {
     for (const p of s.points) if (typeof p.value === "number" && Number.isFinite(p.value)) allValues.push(p.value);
@@ -83,6 +76,20 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
   const span = Math.max(1e-9, maxV - minV);
   const yMin = minV - span * 0.07;
   const yMax = maxV + span * 0.07;
+
+  // Choose left padding based on label width so y-axis values never clip.
+  ctx.font = "12px ui-sans-serif, system-ui";
+  const fmt = (n) => new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(n);
+  const yMaxLabel = `${fmt(yMax)} ${unitLabel}`.trim();
+  const yMinLabel = `${fmt(yMin)} ${unitLabel}`.trim();
+  const labelW = Math.max(ctx.measureText(yMaxLabel).width, ctx.measureText(yMinLabel).width);
+
+  const pad = { l: Math.max(58, Math.ceil(labelW) + 18), r: 16, t: 18, b: 36 };
+  const innerW = w - pad.l - pad.r;
+  const innerH = h - pad.t - pad.b;
+
+  ctx.fillStyle = "rgba(255,255,255,0.02)";
+  ctx.fillRect(pad.l, pad.t, innerW, innerH);
 
   const { axisDates, valuesByKey } = alignSeriesPoints(seriesList);
   const xOf = (i) => pad.l + (axisDates.length <= 1 ? innerW / 2 : (i / (axisDates.length - 1)) * innerW);
@@ -101,16 +108,14 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
 
   // title + y labels
   ctx.fillStyle = "rgba(255,255,255,0.72)";
-  ctx.font = "12px ui-sans-serif, system-ui";
-  const fmt = (n) => new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(n);
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillText(title, pad.l, 2);
 
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  ctx.fillText(`${fmt(yMax)} ${unitLabel}`, pad.l - 8, pad.t);
-  ctx.fillText(`${fmt(yMin)} ${unitLabel}`, pad.l - 8, pad.t + innerH);
+  ctx.fillText(yMaxLabel, pad.l - 8, pad.t);
+  ctx.fillText(yMinLabel, pad.l - 8, pad.t + innerH);
 
   const hasAny = vals.length > 0;
   if (!hasAny) {

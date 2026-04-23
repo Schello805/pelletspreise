@@ -249,6 +249,10 @@
 	              <p class="card-subtitle">Aktiviere/Deaktiviere Quellen oder lege neue an (HTTP/Regex oder Playwright).</p>
 	            </div>
 	            <div class="right actions-inline">
+	              <div class="form-check form-switch" title="Wenn aktiv, ruft der Server 1× täglich automatisch die aktuellen Werte ab (mit den zuletzt verwendeten Abfrage-Einstellungen).">
+	                <input class="form-check-input" type="checkbox" role="switch" id="autoDailyEnabled" checked />
+	                <label class="form-check-label muted" for="autoDailyEnabled">Auto 1×/Tag</label>
+	              </div>
 	              <button class="btn btn-outline-light btn-sm" type="button" id="addSourceBtn">Quelle hinzufügen</button>
 	              <button class="btn btn-outline-light btn-sm" type="button" id="exportSourcesBtn">Export</button>
 	              <label class="btn btn-outline-light btn-sm file">
@@ -304,14 +308,24 @@
                 </label>
               </div>
 
-              <label class="field">
-                <span class="label">Typ</span>
-                <select id="src_kind">
-                  <option value="http-regex">HTTP + Regex (einfach)</option>
-                  <option value="playwright">Playwright (Formulare/JS)</option>
-                </select>
-                <span class="help">HTTP+Regex funktioniert gut, wenn der Preis im HTML steht. Playwright kann Felder ausfüllen und klicken.</span>
-              </label>
+	              <label class="field">
+	                <span class="label">Typ</span>
+	                <select id="src_kind">
+	                  <option value="http-regex">HTTP + Regex (einfach)</option>
+	                  <option value="playwright">Playwright (Formulare/JS)</option>
+	                </select>
+	                <span class="help">HTTP+Regex funktioniert gut, wenn der Preis im HTML steht. Playwright kann Felder ausfüllen und klicken.</span>
+	              </label>
+
+	              <label class="field">
+	                <span class="label">Statistik</span>
+	                <select id="src_historyMode">
+	                  <option value="auto">Auto (wie bisher)</option>
+	                  <option value="best">Nur bestes Angebot</option>
+	                  <option value="none">Nicht aufnehmen</option>
+	                </select>
+	                <span class="help">Steuert, was in Historie/Diagramm gespeichert wird.</span>
+	              </label>
 
               <label class="field">
                 <span class="label">URL</span>

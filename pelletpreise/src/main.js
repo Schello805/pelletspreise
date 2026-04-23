@@ -69,6 +69,7 @@ const state = {
   dailySeriesKey: null,
   dailyCompareKeys: [],
   _dailyExportParams: "",
+  settings: null,
 };
 
 function renderOverview({ query, avgResults, offerRows }) {
@@ -232,6 +233,17 @@ async function refreshSources() {
   renderSources(state.sources);
 }
 
+function applySettingsToUi(settings) {
+  const cb = document.getElementById("autoDailyEnabled");
+  if (cb) cb.checked = Boolean(settings?.autoDailyEnabled);
+}
+
+async function refreshSettings() {
+  const data = await apiFetch("/api/settings");
+  state.settings = data.settings || null;
+  applySettingsToUi(state.settings);
+}
+
 function openSourceDialog(source) {
   state.editingSourceId = source?.id || null;
   $("sourceDialogTitle").textContent = source?.id ? "Quelle bearbeiten" : "Quelle hinzufügen";
@@ -239,6 +251,8 @@ function openSourceDialog(source) {
   $("src_name").value = source?.name || "";
   $("src_enabled").value = String(Boolean(source?.enabled ?? true));
   $("src_kind").value = source?.kind || "http-regex";
+  const historyModeEl = document.getElementById("src_historyMode");
+  if (historyModeEl) historyModeEl.value = String(source?.historyMode || "auto");
   $("src_url").value = source?.url || "";
   $("src_regex").value = source?.extract?.regex || "";
   $("src_regexAsOf").value = source?.extract?.regexAsOf || "";
@@ -251,6 +265,7 @@ function getSourceFromDialog() {
   const name = String($("src_name").value || "").trim();
   const enabled = $("src_enabled").value === "true";
   const kind = String($("src_kind").value || "").trim();
+  const historyMode = String(document.getElementById("src_historyMode")?.value || "auto").trim();
   const url = String($("src_url").value || "").trim();
   const regex = String($("src_regex").value || "").trim();
   const regexAsOf = String($("src_regexAsOf").value || "").trim();
@@ -260,6 +275,7 @@ function getSourceFromDialog() {
     name: name || "Quelle",
     enabled,
     kind,
+    historyMode,
     url: url || null,
     extract: normalizeExtract({ regex, regexAsOf }),
     steps: null,
@@ -354,6 +370,7 @@ function setupTabs() {
       const name = t.dataset.tab;
       activate(name);
       if (name === "sources") {
+        await refreshSettings().catch(() => {});
         await refreshSources().catch((e) => toast(e.message, { kind: "error" }));
       }
       if (name === "history") {
@@ -402,6 +419,21 @@ function setupEvents() {
   });
 
   $("refreshSourcesBtn").addEventListener("click", () => refreshSources().catch((e) => toast(e.message, { kind: "error" })));
+  const autoCb = document.getElementById("autoDailyEnabled");
+  if (autoCb) {
+    autoCb.addEventListener("change", async () => {
+      try {
+        const nextEnabled = Boolean(autoCb.checked);
+        const data = await apiFetch("/api/settings", { method: "PUT", body: JSON.stringify({ settings: { autoDailyEnabled: nextEnabled } }) });
+        state.settings = data.settings || null;
+        applySettingsToUi(state.settings);
+        toast(nextEnabled ? "Auto-Abruf aktiviert." : "Auto-Abruf deaktiviert.", { kind: "success" });
+      } catch (err) {
+        autoCb.checked = Boolean(state.settings?.autoDailyEnabled);
+        toast(err.message || "Fehler", { kind: "error" });
+      }
+    });
+  }
 
   ["offersSearch", "offersSort", "offersSortDir", "offersOnlyOrderable"].forEach((id) => {
     const el = document.getElementById(id);
@@ -583,6 +615,7 @@ export async function bootstrap() {
 
   updateHistoryExportLinks({ $, state });
 
+  await refreshSettings().catch(() => {});
   await refreshSources().catch(() => {});
   await refreshHistory().catch(() => {});
 
