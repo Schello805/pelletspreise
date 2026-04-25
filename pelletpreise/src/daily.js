@@ -84,7 +84,7 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
   const yMinLabel = `${fmt(yMin)} ${unitLabel}`.trim();
   const labelW = Math.max(ctx.measureText(yMaxLabel).width, ctx.measureText(yMinLabel).width);
 
-  const pad = { l: Math.max(58, Math.ceil(labelW) + 18), r: 16, t: 18, b: 36 };
+  const pad = { l: Math.max(58, Math.ceil(labelW) + 18), r: 16, t: 18, b: 54 };
   const innerW = w - pad.l - pad.r;
   const innerH = h - pad.t - pad.b;
 
@@ -94,6 +94,23 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
   const { axisDates, valuesByKey } = alignSeriesPoints(seriesList);
   const xOf = (i) => pad.l + (axisDates.length <= 1 ? innerW / 2 : (i / (axisDates.length - 1)) * innerW);
   const yOf = (v) => pad.t + (1 - (v - yMin) / (yMax - yMin)) * innerH;
+
+  const showYear = (() => {
+    const first = String(axisDates[0] || "");
+    const last = String(axisDates[axisDates.length - 1] || "");
+    const fy = first.slice(0, 4);
+    const ly = last.slice(0, 4);
+    return fy && ly && fy !== ly;
+  })();
+
+  const fmtAxisDate = (dateKey) => {
+    const s = String(dateKey || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const yy = s.slice(2, 4);
+    const mm = s.slice(5, 7);
+    const dd = s.slice(8, 10);
+    return showYear ? `${dd}.${mm}.${yy}` : `${dd}.${mm}`;
+  };
 
   // grid
   ctx.strokeStyle = "rgba(255,255,255,0.08)";
@@ -116,6 +133,32 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
   ctx.textBaseline = "middle";
   ctx.fillText(yMaxLabel, pad.l - 8, pad.t);
   ctx.fillText(yMinLabel, pad.l - 8, pad.t + innerH);
+
+  // x-axis labels
+  if (axisDates.length > 1) {
+    ctx.fillStyle = "rgba(255,255,255,0.62)";
+    ctx.font = "11px ui-sans-serif, system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const tickCount = Math.min(6, axisDates.length);
+    const step = Math.max(1, Math.ceil((axisDates.length - 1) / Math.max(1, tickCount - 1)));
+    const indices = new Set();
+    for (let i = 0; i < axisDates.length; i += step) indices.add(i);
+    indices.add(0);
+    indices.add(axisDates.length - 1);
+
+    for (const i of Array.from(indices.values()).sort((a, b) => a - b)) {
+      const x = xOf(i);
+      const y0 = pad.t + innerH;
+      ctx.strokeStyle = "rgba(255,255,255,0.10)";
+      ctx.beginPath();
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, y0 + 4);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.62)";
+      ctx.fillText(fmtAxisDate(axisDates[i]), x, y0 + 8);
+    }
+  }
 
   const hasAny = vals.length > 0;
   if (!hasAny) {
@@ -151,28 +194,31 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
     const s = seriesList[sIdx];
     const values = valuesByKey.get(s.key) || [];
     const usableCount = values.filter((v) => typeof v === "number" && Number.isFinite(v)).length;
-    if (usableCount < 2) continue;
+    if (usableCount < 1) continue;
 
-    ctx.strokeStyle = CHART_PALETTE[sIdx % CHART_PALETTE.length];
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < values.length; i += 1) {
-      const v = values[i];
-      if (!(typeof v === "number" && Number.isFinite(v))) continue;
-      const x = xOf(i);
-      const y = yOf(v);
-      if (!started) {
-        ctx.moveTo(x, y);
-        started = true;
-      } else {
-        ctx.lineTo(x, y);
+    const color = CHART_PALETTE[sIdx % CHART_PALETTE.length];
+    if (usableCount >= 2) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < values.length; i += 1) {
+        const v = values[i];
+        if (!(typeof v === "number" && Number.isFinite(v))) continue;
+        const x = xOf(i);
+        const y = yOf(v);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
       }
+      ctx.stroke();
     }
-    ctx.stroke();
 
     // Points
-    ctx.fillStyle = CHART_PALETTE[sIdx % CHART_PALETTE.length];
+    ctx.fillStyle = color;
     for (let i = 0; i < values.length; i += 1) {
       const v = values[i];
       if (!(typeof v === "number" && Number.isFinite(v))) continue;

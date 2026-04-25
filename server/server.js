@@ -21,7 +21,7 @@ const HOST = String(process.env.HOST || "127.0.0.1");
 const BASE_URL = String(process.env.BASE_URL || `http://${HOST}:${PORT}`);
 const APP_VERSION = "0.1.0";
 
-async function scrapeRunInternal({ query, onlyDemo = false } = {}) {
+async function scrapeRunInternal({ query, onlyDemo = false, persistCached = false } = {}) {
   const sources = await readSources({ projectRoot });
   const enabled = sources.filter((s) => s.enabled);
   const selected = onlyDemo ? enabled.filter((s) => s.kind === "demo") : enabled;
@@ -104,7 +104,7 @@ async function scrapeRunInternal({ query, onlyDemo = false } = {}) {
 
   for (const r of results) {
     // Only persist non-cached runs (so daily caching keeps history clean).
-    if (r && r.cached) continue;
+    if (!persistCached && r && r.cached) continue;
     const sourceId = String(r?.sourceId || "");
     const mode = historyModeById.get(sourceId) || "auto";
     const prepared = applyHistoryModeToResult({ ...r, query }, mode);
@@ -158,7 +158,9 @@ async function tryAutoDailyScrape({ force = false } = {}) {
   }
 
   try {
-    await scrapeRunInternal({ query: normalizedQuery, onlyDemo: false });
+    // Auto daily job should ensure that today's values appear in the history/chart,
+    // even if the underlying run uses cached values (e.g. after a restart).
+    await scrapeRunInternal({ query: normalizedQuery, onlyDemo: false, persistCached: true });
     await writeSettings({
       projectRoot,
       settings: { ...settings, lastAutoRunDateKey: todayKey, lastAutoRunAt: new Date().toISOString(), lastAutoError: null },
