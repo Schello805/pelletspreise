@@ -361,6 +361,19 @@ function renderDailyHistory() {
   });
 }
 
+function setFooterVersion({ version, rev, updateAvailable, updateHint } = {}) {
+  const el = document.getElementById("footerVersion");
+  if (!el) return;
+  const v = String(version || "").trim();
+  const r = String(rev || "").trim();
+  const parts = [];
+  if (v) parts.push(`v${v}`);
+  if (r) parts.push(`rev ${r}`);
+  if (updateAvailable) parts.push("Update verfügbar");
+  el.textContent = parts.join(" · ");
+  el.title = String(updateHint || "").trim();
+}
+
 function setupTabs() {
   const tabs = Array.from(document.querySelectorAll(".tab"));
   const panels = {
@@ -627,10 +640,25 @@ export async function bootstrap() {
   try {
     const health = await apiFetch("/api/health");
     setServerStatus(`Server: OK (${health.version})`, true);
+    setFooterVersion({ version: health.version });
   } catch {
     setServerStatus("Server: nicht erreichbar", false);
     toast("Server nicht erreichbar. Starte den lokalen Server.", { kind: "error", timeoutMs: 6000 });
+    setFooterVersion({ version: "" });
   }
+
+  // Non-blocking update check (GitHub main SHA)
+  apiFetch("/api/update")
+    .then((data) => {
+      if (!data?.ok) return;
+      setFooterVersion({
+        version: data.current?.version,
+        rev: data.current?.rev,
+        updateAvailable: Boolean(data.updateAvailable),
+        updateHint: data.updateHint,
+      });
+    })
+    .catch(() => {});
 
   updateHistoryExportLinks({ $, state });
 

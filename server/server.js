@@ -20,6 +20,72 @@ const PORT = Number(process.env.PORT || 8000);
 const HOST = String(process.env.HOST || "127.0.0.1");
 const BASE_URL = String(process.env.BASE_URL || `http://${HOST}:${PORT}`);
 const APP_VERSION = "0.1.0";
+const GITHUB_REPO = "Schello805/pelletspreise";
+
+let remoteUpdateCache = { checkedAtMs: 0, ok: false, sha: null, date: null, error: null };
+
+async function readLocalGitSha() {
+  try {
+    const headPath = path.join(projectRoot, ".git", "HEAD");
+    const headRaw = String(await fs.readFile(headPath, "utf8")).trim();
+    if (!headRaw) return null;
+    if (headRaw.startsWith("ref:")) {
+      const ref = headRaw.slice("ref:".length).trim();
+      const refPath = path.join(projectRoot, ".git", ref);
+      try {
+        const sha = String(await fs.readFile(refPath, "utf8")).trim();
+        if (sha) return sha;
+      } catch {
+        // fall through
+      }
+      // packed-refs fallback
+      try {
+        const packed = String(await fs.readFile(path.join(projectRoot, ".git", "packed-refs"), "utf8"));
+        const line = packed
+          .split("\n")
+          .map((l) => l.trim())
+          .find((l) => l && !l.startsWith("#") && !l.startsWith("^") && l.endsWith(` ${ref}`));
+        if (line) return line.split(/\s+/)[0] || null;
+      } catch {
+        // ignore
+      }
+      return null;
+    }
+    return headRaw;
+  } catch {
+    return null;
+  }
+}
+
+function shortSha(sha) {
+  const s = String(sha || "").trim();
+  return /^[0-9a-f]{7,40}$/i.test(s) ? s.slice(0, 7) : null;
+}
+
+async function fetchRemoteMainSha({ force = false } = {}) {
+  const now = Date.now();
+  const maxAgeMs = 30 * 60 * 1000;
+  if (!force && remoteUpdateCache.checkedAtMs && now - remoteUpdateCache.checkedAtMs < maxAgeMs) return remoteUpdateCache;
+
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/commits/main`;
+    const r = await fetch(url, {
+      headers: {
+        accept: "application/vnd.github+json",
+        "user-agent": "pelletpreis-checker/0.1 (+contact: info@schellenberger.biz)",
+      },
+    });
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    const data = await r.json().catch(() => null);
+    const sha = data?.sha ? String(data.sha) : null;
+    const date = data?.commit?.author?.date ? String(data.commit.author.date) : null;
+    remoteUpdateCache = { checkedAtMs: now, ok: Boolean(sha), sha, date, error: null };
+    return remoteUpdateCache;
+  } catch (err) {
+    remoteUpdateCache = { checkedAtMs: now, ok: false, sha: null, date: null, error: err?.message || String(err) };
+    return remoteUpdateCache;
+  }
+}
 
 async function scrapeRunInternal({ query, onlyDemo = false, persistCached = false } = {}) {
   const sources = await readSources({ projectRoot });
@@ -312,6 +378,21 @@ function demoHtml({ query }) {
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/health") {
     return jsonResponse(res, 200, { ok: true, version: APP_VERSION, baseUrl: BASE_URL });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/update") {
+    const localSha = await readLocalGitSha();
+    const local = { version: APP_VERSION, sha: localSha, rev: shortSha(localSha) };
+    const remote = await fetchRemoteMainSha();
+    const latest = { sha: remote.sha, rev: shortSha(remote.sha), date: remote.date };
+    const updateAvailable = Boolean(local.rev && latest.rev && local.rev !== latest.rev);
+    const hint = [
+      "Update (Debian/Proxmox LXC):",
+      "  cd /opt/pelletpreis-checker/scripts",
+      "  chmod +x update-pelletpreis-checker-debian13-lxc.sh",
+      "  ./update-pelletpreis-checker-debian13-lxc.sh",
+    ].join("\n");
+    return jsonResponse(res, 200, { ok: true, current: local, latest, updateAvailable, updateHint: hint, remoteOk: remote.ok, remoteError: remote.error });
   }
 
   if (req.method === "GET" && url.pathname === "/api/settings") {
