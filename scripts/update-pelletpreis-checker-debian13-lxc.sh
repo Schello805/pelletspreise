@@ -28,6 +28,7 @@ REPO_URL="${REPO_URL:-}"
 BRANCH="${BRANCH:-main}"
 
 ENV_FILE="${ENV_FILE:-/etc/${APP_NAME}.env}"
+UNIT_FILE="${UNIT_FILE:-/etc/systemd/system/${APP_NAME}.service}"
 
 # Default repo URL (used when installation has no .git checkout).
 DEFAULT_REPO_URL="${DEFAULT_REPO_URL:-https://github.com/Schello805/pelletspreise.git}"
@@ -50,6 +51,13 @@ need_root() {
 
 log() {
   echo "[$APP_NAME] $*"
+}
+
+unit_exists() {
+  if [[ -f "$UNIT_FILE" ]]; then
+    return 0
+  fi
+  systemctl list-unit-files "${APP_NAME}.service" --no-legend 2>/dev/null | grep -q "^${APP_NAME}\\.service"
 }
 
 ensure_rsync() {
@@ -89,7 +97,7 @@ EOF
 }
 
 stop_service() {
-  if systemctl list-unit-files | grep -qE "^${APP_NAME}\\.service"; then
+  if unit_exists; then
     log "Stopping service…"
     systemctl stop "${APP_NAME}.service" || true
   else
@@ -98,7 +106,7 @@ stop_service() {
 }
 
 ensure_service_unit() {
-  if systemctl list-unit-files | grep -qE "^${APP_NAME}\\.service"; then
+  if unit_exists; then
     return
   fi
   local installer="$APP_DIR/scripts/install-pelletpreis-checker-debian13-lxc.sh"
@@ -108,6 +116,7 @@ ensure_service_unit() {
   fi
   log "Service unit missing -> running installer to create systemd unit…"
   bash "$installer"
+  systemctl daemon-reload || true
 }
 
 update_checkout_git() {
@@ -192,12 +201,16 @@ install_playwright_browsers() {
 }
 
 start_service() {
-  if systemctl list-unit-files | grep -qE "^${APP_NAME}\\.service"; then
+  if ! unit_exists; then
+    ensure_service_unit
+  fi
+  if unit_exists; then
     log "Starting service…"
     systemctl start "${APP_NAME}.service"
     return
   fi
-  ensure_service_unit
+  log "Service unit still missing after installer attempt: ${APP_NAME}.service"
+  exit 1
 }
 
 health_check() {
