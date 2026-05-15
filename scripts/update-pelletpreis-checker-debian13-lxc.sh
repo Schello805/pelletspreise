@@ -97,6 +97,19 @@ stop_service() {
   fi
 }
 
+ensure_service_unit() {
+  if systemctl list-unit-files | grep -qE "^${APP_NAME}\\.service"; then
+    return
+  fi
+  local installer="$APP_DIR/scripts/install-pelletpreis-checker-debian13-lxc.sh"
+  if [[ ! -f "$installer" ]]; then
+    log "Service unit missing and installer not found at: $installer"
+    return 1
+  fi
+  log "Service unit missing -> running installer to create systemd unit…"
+  bash "$installer"
+}
+
 update_checkout_git() {
   log "Updating via git (branch: $BRANCH)…"
 
@@ -182,9 +195,9 @@ start_service() {
   if systemctl list-unit-files | grep -qE "^${APP_NAME}\\.service"; then
     log "Starting service…"
     systemctl start "${APP_NAME}.service"
-  else
-    log "Service unit not found: ${APP_NAME}.service (skipping start)"
+    return
   fi
+  ensure_service_unit
 }
 
 health_check() {
@@ -195,10 +208,8 @@ health_check() {
 
   # shellcheck disable=SC1090
   source "$ENV_FILE"
-  local url="${BASE_URL:-}"
-  if [[ -z "$url" ]]; then
-    url="http://${HOST:-127.0.0.1}:${PORT:-8000}"
-  fi
+  # Always health-check via localhost (hairpin/LAN-IP often fails inside LXC).
+  local url="http://127.0.0.1:${PORT:-8000}"
 
   log "Health check: ${url}/api/health"
   sleep 1
