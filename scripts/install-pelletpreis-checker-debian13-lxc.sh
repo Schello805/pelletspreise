@@ -27,9 +27,9 @@ APP_GROUP="${APP_GROUP:-$APP_USER}"
 APP_DIR="${APP_DIR:-/opt/$APP_NAME}"
 REPO_URL="${REPO_URL:-}"
 
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
-BASE_URL="${BASE_URL:-http://$HOST:$PORT}"
+BASE_URL="${BASE_URL:-}"
 CONTACT_EMAIL="${CONTACT_EMAIL:-info@schellenberger.biz}"
 
 INSTALL_PLAYWRIGHT="${INSTALL_PLAYWRIGHT:-0}"
@@ -50,6 +50,38 @@ need_root() {
 
 log() {
   echo "[$APP_NAME] $*"
+}
+
+detect_primary_ipv4() {
+  local ip=""
+  if command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  fi
+  if [[ -z "$ip" ]] && command -v ip >/dev/null 2>&1; then
+    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}' || true)"
+  fi
+  if [[ -n "$ip" && "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$ip"
+    return 0
+  fi
+  return 1
+}
+
+compute_base_url() {
+  if [[ -n "$BASE_URL" ]]; then
+    return
+  fi
+  if [[ "$HOST" == "0.0.0.0" ]]; then
+    local ip
+    if ip="$(detect_primary_ipv4)"; then
+      BASE_URL="http://${ip}:${PORT}"
+    else
+      # Fallback to localhost; service will still be reachable on the machine itself.
+      BASE_URL="http://127.0.0.1:${PORT}"
+    fi
+  else
+    BASE_URL="http://${HOST}:${PORT}"
+  fi
 }
 
 ensure_packages() {
@@ -195,6 +227,7 @@ install_deps() {
 }
 
 write_env_file() {
+  compute_base_url
   log "Writing env file: $ENV_FILE"
   umask 077
   cat >"$ENV_FILE" <<EOF
@@ -239,6 +272,7 @@ EOF
 }
 
 health_check() {
+  compute_base_url
   log "Waiting for service…"
   sleep 1
   if curl -sS -m 3 "${BASE_URL}/api/health" >/dev/null; then
@@ -268,7 +302,7 @@ Done.
 - URL: ${BASE_URL}/pelletpreise/
 - Logs: journalctl -u ${APP_NAME}.service -f
 
-If you want external access, set HOST=0.0.0.0 in ${ENV_FILE} and restart:
+If your LAN IP changes, update BASE_URL in ${ENV_FILE} and restart:
   systemctl restart ${APP_NAME}.service
 
 OUT

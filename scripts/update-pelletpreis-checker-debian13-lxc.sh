@@ -53,6 +53,42 @@ log() {
   echo "[$APP_NAME] $*"
 }
 
+detect_primary_ipv4() {
+  local ip=""
+  if command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  fi
+  if [[ -z "$ip" ]] && command -v ip >/dev/null 2>&1; then
+    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}' || true)"
+  fi
+  if [[ -n "$ip" && "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$ip"
+    return 0
+  fi
+  return 1
+}
+
+ensure_env_listen_all() {
+  if [[ ! -f "$ENV_FILE" ]]; then
+    return
+  fi
+
+  # Ensure HOST=0.0.0.0 so the UI is reachable from LAN by default.
+  if grep -qE '^HOST=127\.0\.0\.1(\s*)$' "$ENV_FILE"; then
+    log "Updating env: HOST=0.0.0.0 (LAN access)…"
+    sed -i 's/^HOST=127\\.0\\.0\\.1\\s*$/HOST=0.0.0.0/' "$ENV_FILE" || true
+  fi
+
+  # If BASE_URL points to localhost, prefer the primary IPv4.
+  if grep -qE '^BASE_URL=http://127\.0\.0\.1:' "$ENV_FILE"; then
+    local ip
+    if ip="$(detect_primary_ipv4)"; then
+      log "Updating env: BASE_URL=http://${ip}:…"
+      sed -i "s#^BASE_URL=http://127\\.0\\.0\\.1:#BASE_URL=http://${ip}:#" "$ENV_FILE" || true
+    fi
+  fi
+}
+
 unit_exists() {
   if [[ -f "$UNIT_FILE" ]]; then
     return 0
@@ -258,6 +294,7 @@ main() {
 
   ensure_runtime_dirs
   ensure_lxc_compat_override
+  ensure_env_listen_all
   install_deps
   install_optional_sqlite "$had_sqlite"
   install_playwright_browsers
