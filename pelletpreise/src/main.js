@@ -70,6 +70,7 @@ const state = {
   dailyCompareKeys: [],
   _dailyExportParams: "",
   settings: null,
+  diagnostics: null,
 };
 
 function renderOverview({ query, avgResults, offerRows }) {
@@ -209,16 +210,30 @@ function renderSources(sources) {
     return;
   }
 
+  const pwMissing = Boolean(state.diagnostics?.playwright && state.diagnostics.playwright.moduleOk && !state.diagnostics.playwright.chromiumOk);
+  const pwHint = pwMissing
+    ? "Playwright ist installiert, aber Chromium fehlt. Installiere es auf dem Server: npx playwright install chromium"
+    : "";
+  const needsPwKinds = new Set(["playwright", "heizpellets24"]);
+
   body.innerHTML = sources
     .map((s) => {
       const enabled = s.enabled ? "checked" : "";
       const last = s.lastRunAt ? fmtTime(s.lastRunAt) : "—";
       const historyMode = String(s.historyMode || "auto");
       const hm = (value, label) => `<option value="${escapeAttr(value)}"${historyMode === value ? " selected" : ""}>${escapeHtml(label)}</option>`;
+      const kindLabel =
+        needsPwKinds.has(String(s.kind || "")) && pwMissing
+          ? `<span class="badge bg-warning text-dark" title="${escapeAttr(pwHint)}">${escapeHtml(String(s.kind || "playwright"))} ⚠</span>`
+          : escapeHtml(s.kind);
+      const cacheBadge =
+        typeof s.cacheHours === "number" && Number.isFinite(s.cacheHours) && s.cacheHours > 0
+          ? `<span class="badge bg-secondary-subtle text-light ms-1" title="Cache: ${escapeAttr(String(s.cacheHours))}h">cache</span>`
+          : "";
       return `<tr>
         <td><input type="checkbox" data-action="toggle" data-id="${escapeAttr(s.id)}" ${enabled} /></td>
         <td>${escapeHtml(s.name)}</td>
-        <td class="muted">${escapeHtml(s.kind)}</td>
+        <td class="muted">${kindLabel}${cacheBadge}</td>
         <td>
           <select class="form-select form-select-sm" data-action="historyMode" data-id="${escapeAttr(s.id)}" aria-label="Statistik">
             ${hm("auto", "Auto")}
@@ -245,12 +260,25 @@ async function refreshSources() {
 function applySettingsToUi(settings) {
   const cb = document.getElementById("autoDailyEnabled");
   if (cb) cb.checked = Boolean(settings?.autoDailyEnabled);
+  const statusEl = document.getElementById("autoDailyStatus");
+  const lastAt = settings?.lastAutoRunAt ? fmtTime(settings.lastAutoRunAt) : "";
+  const err = settings?.lastAutoError ? String(settings.lastAutoError) : "";
+  if (statusEl) {
+    statusEl.textContent = lastAt ? `(${lastAt})` : "";
+    statusEl.title = err ? `Letzter Fehler: ${err}` : lastAt ? `Letzter Auto-Abruf: ${lastAt}` : "";
+  }
+  if (cb) cb.title = statusEl?.title || cb.title || "";
 }
 
 async function refreshSettings() {
   const data = await apiFetch("/api/settings");
   state.settings = data.settings || null;
   applySettingsToUi(state.settings);
+}
+
+async function refreshDiagnostics() {
+  const data = await apiFetch("/api/diagnostics");
+  state.diagnostics = data || null;
 }
 
 function openSourceDialog(source) {
@@ -260,6 +288,8 @@ function openSourceDialog(source) {
   $("src_name").value = source?.name || "";
   $("src_enabled").value = String(Boolean(source?.enabled ?? true));
   $("src_kind").value = source?.kind || "http-regex";
+  const cacheEl = document.getElementById("src_cacheHours");
+  if (cacheEl) cacheEl.value = source?.cacheHours != null ? String(source.cacheHours) : "";
   const historyModeEl = document.getElementById("src_historyMode");
   if (historyModeEl) historyModeEl.value = String(source?.historyMode || "auto");
   $("src_url").value = source?.url || "";
@@ -275,6 +305,8 @@ function getSourceFromDialog() {
   const enabled = $("src_enabled").value === "true";
   const kind = String($("src_kind").value || "").trim();
   const historyMode = String(document.getElementById("src_historyMode")?.value || "auto").trim();
+  const cacheRaw = String(document.getElementById("src_cacheHours")?.value || "").trim();
+  const cacheHours = cacheRaw ? Number(cacheRaw) : null;
   const url = String($("src_url").value || "").trim();
   const regex = String($("src_regex").value || "").trim();
   const regexAsOf = String($("src_regexAsOf").value || "").trim();
@@ -285,6 +317,7 @@ function getSourceFromDialog() {
     enabled,
     kind,
     historyMode,
+    cacheHours: Number.isFinite(cacheHours) ? cacheHours : null,
     url: url || null,
     extract: normalizeExtract({ regex, regexAsOf }),
     steps: null,
@@ -392,6 +425,7 @@ function setupTabs() {
       const name = t.dataset.tab;
       activate(name);
       if (name === "sources") {
+        await refreshDiagnostics().catch(() => {});
         await refreshSettings().catch(() => {});
         await refreshSources().catch((e) => toast(e.message, { kind: "error" }));
       }
@@ -646,6 +680,8 @@ export async function bootstrap() {
     toast("Server nicht erreichbar. Starte den lokalen Server.", { kind: "error", timeoutMs: 6000 });
     setFooterVersion({ version: "" });
   }
+
+  await refreshDiagnostics().catch(() => {});
 
   // Non-blocking update check (GitHub main SHA)
   apiFetch("/api/update")

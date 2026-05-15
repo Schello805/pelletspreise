@@ -136,6 +136,7 @@ checkout_repo() {
   fi
 
   chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
+  chmod +x "$APP_DIR/scripts/"*.sh 2>/dev/null || true
 }
 
 ensure_runtime_dirs() {

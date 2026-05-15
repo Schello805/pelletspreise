@@ -23,6 +23,7 @@ const APP_VERSION = "0.1.0";
 const GITHUB_REPO = "Schello805/pelletspreise";
 
 let remoteUpdateCache = { checkedAtMs: 0, ok: false, sha: null, date: null, error: null };
+let dailyHistoryCache = new Map(); // key -> { atMs, sig, rows }
 
 async function readLocalGitSha() {
   try {
@@ -100,8 +101,8 @@ async function scrapeRunInternal({ query, onlyDemo = false, persistCached = fals
   // only when at least one source would actually run).
   const cachedChecks = await withLimit(
     6,
-    selected.map((s) => async () => ({ source: s, cached: await getCachedResult({ projectRoot, sourceId: s.id, query }) })),
-  );
+      selected.map((s) => async () => ({ source: s, cached: await getCachedResult({ projectRoot, sourceId: s.id, query, cacheHours: s.cacheHours ?? null }) })),
+    );
 
   const httpToRun = [];
   const pwToRun = [];
@@ -259,6 +260,14 @@ function normalizeHistoryMode(value) {
   return "auto";
 }
 
+function normalizeCacheHours(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (n <= 0) return null;
+  return Math.max(0.25, Math.min(168, n)); // 15min .. 7d
+}
+
 function pickBestOfferFromList(offers) {
   const list = Array.isArray(offers) ? offers : [];
   let best = null;
@@ -395,6 +404,61 @@ async function handleApi(req, res, url) {
     return jsonResponse(res, 200, { ok: true, current: local, latest, updateAvailable, updateHint: hint, remoteOk: remote.ok, remoteError: remote.error });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/diagnostics") {
+    const dataDir = path.join(projectRoot, "server", "data");
+    const diag = {
+      ok: true,
+      version: APP_VERSION,
+      baseUrl: BASE_URL,
+      dataDir,
+      playwright: { moduleOk: false, chromiumOk: false, chromiumPath: null, error: null },
+    };
+    try {
+      const st = await fs.stat(dataDir);
+      diag.dataDirExists = st.isDirectory();
+    } catch {
+      diag.dataDirExists = false;
+    }
+
+    // Playwright status (cached for 10 minutes).
+    try {
+      if (!globalThis.__pp_pw_cache || Date.now() - globalThis.__pp_pw_cache.checkedAtMs > 10 * 60 * 1000) {
+        const out = { checkedAtMs: Date.now(), moduleOk: false, chromiumOk: false, chromiumPath: null, error: null };
+        try {
+          const pw = await import("playwright");
+          out.moduleOk = true;
+          const chromiumPath = pw?.chromium?.executablePath?.() || null;
+          out.chromiumPath = chromiumPath;
+          if (chromiumPath) {
+            try {
+              await fs.access(chromiumPath);
+              out.chromiumOk = true;
+            } catch {
+              out.chromiumOk = false;
+            }
+          }
+        } catch (err) {
+          out.error = err?.message || String(err);
+        }
+        globalThis.__pp_pw_cache = out;
+      }
+      const c = globalThis.__pp_pw_cache;
+      diag.playwright = { moduleOk: Boolean(c.moduleOk), chromiumOk: Boolean(c.chromiumOk), chromiumPath: c.chromiumPath, error: c.error };
+    } catch (err) {
+      diag.playwright.error = err?.message || String(err);
+    }
+
+    // Auto-run status
+    try {
+      const settings = await readSettings({ projectRoot });
+      diag.settings = settings;
+    } catch {
+      diag.settings = null;
+    }
+
+    return jsonResponse(res, 200, diag);
+  }
+
   if (req.method === "GET" && url.pathname === "/api/settings") {
     const settings = await readSettings({ projectRoot });
     return jsonResponse(res, 200, { ok: true, settings });
@@ -517,6 +581,7 @@ async function handleApi(req, res, url) {
 	      url: s.url != null ? String(s.url) : null,
 	      extract: normalizeExtract(s.extract),
 	      historyMode: normalizeHistoryMode(s.historyMode),
+	      cacheHours: normalizeCacheHours(s.cacheHours),
 	      request:
 	        s.request && typeof s.request === "object"
 	          ? {
@@ -554,6 +619,7 @@ async function handleApi(req, res, url) {
 	      url: s.url != null ? String(s.url) : null,
 	      extract: normalizeExtract(s.extract),
 	      historyMode: normalizeHistoryMode(s.historyMode),
+	      cacheHours: normalizeCacheHours(s.cacheHours),
 	      request:
 	        s.request && typeof s.request === "object"
 	          ? {
@@ -564,8 +630,8 @@ async function handleApi(req, res, url) {
             }
           : null,
       steps: Array.isArray(s.steps) ? s.steps : null,
-      lastRunAt: null,
-    };
+	      lastRunAt: null,
+	    };
     sources.push(next);
     await writeSources({ projectRoot, sources });
     return jsonResponse(res, 201, { ok: true, source: next });
@@ -589,6 +655,7 @@ async function handleApi(req, res, url) {
 	      ...(patch.url !== undefined ? { url: patch.url != null ? String(patch.url) : null } : {}),
 	      ...(patch.extract !== undefined ? { extract: normalizeExtract(patch.extract) } : {}),
 	      ...(patch.historyMode !== undefined ? { historyMode: normalizeHistoryMode(patch.historyMode) } : {}),
+	      ...(patch.cacheHours !== undefined ? { cacheHours: normalizeCacheHours(patch.cacheHours) } : {}),
 	      ...(patch.request !== undefined
 	        ? {
 	            request:
@@ -654,8 +721,27 @@ async function handleApi(req, res, url) {
     const days = Math.max(1, Math.min(3650, Number(url.searchParams.get("days") || 365)));
     const groupBy = String(url.searchParams.get("groupBy") || "source");
     const onlyOrderable = url.searchParams.get("onlyOrderable") === "1" || url.searchParams.get("onlyOrderable") === "true";
-    const rows = await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable });
-    return jsonResponse(res, 200, { ok: true, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable, rows });
+    const gb = groupBy === "dealer" ? "dealer" : "source";
+    let sig = "no-file";
+    try {
+      const hp = path.join(projectRoot, "server", "data", "history.jsonl");
+      const st = await fs.stat(hp);
+      sig = `${st.size}:${st.mtimeMs}`;
+    } catch {
+      // ignore
+    }
+    const cacheKey = `${days}|${gb}|${onlyOrderable ? 1 : 0}`;
+    const now = Date.now();
+    const cached = dailyHistoryCache.get(cacheKey);
+    if (cached && cached.sig === sig && now - cached.atMs < 30_000) {
+      return jsonResponse(res, 200, { ok: true, days, groupBy: gb, onlyOrderable, rows: cached.rows });
+    }
+
+    const rows = await getDailyHistory({ projectRoot, days, groupBy: gb, onlyOrderable });
+    dailyHistoryCache.set(cacheKey, { atMs: now, sig, rows });
+    // small cap
+    if (dailyHistoryCache.size > 16) dailyHistoryCache = new Map(Array.from(dailyHistoryCache.entries()).slice(-16));
+    return jsonResponse(res, 200, { ok: true, days, groupBy: gb, onlyOrderable, rows });
   }
 
   if (req.method === "GET" && url.pathname === "/api/history/export.json") {

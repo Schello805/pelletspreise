@@ -251,7 +251,7 @@
 	            <div class="right actions-inline">
 	              <div class="form-check form-switch" title="Wenn aktiv, ruft der Server 1× täglich automatisch die aktuellen Werte ab (mit den zuletzt verwendeten Abfrage-Einstellungen).">
 	                <input class="form-check-input" type="checkbox" role="switch" id="autoDailyEnabled" checked />
-	                <label class="form-check-label muted" for="autoDailyEnabled">Auto 1×/Tag</label>
+	                <label class="form-check-label muted" for="autoDailyEnabled">Auto 1×/Tag <span id="autoDailyStatus" class="muted"></span></label>
 	              </div>
 	              <button class="btn btn-outline-light btn-sm" type="button" id="addSourceBtn">Quelle hinzufügen</button>
 	              <button class="btn btn-outline-light btn-sm" type="button" id="exportSourcesBtn">Export</button>
@@ -316,6 +316,12 @@
 	                  <option value="playwright">Playwright (Formulare/JS)</option>
 	                </select>
 	                <span class="help">HTTP+Regex funktioniert gut, wenn der Preis im HTML steht. Playwright kann Felder ausfüllen und klicken.</span>
+	              </label>
+
+	              <label class="field">
+	                <span class="label">Cache (Stunden)</span>
+	                <input id="src_cacheHours" type="number" min="0.25" max="168" step="0.25" placeholder="z. B. 12" />
+	                <span class="help">Optional: Wenn gesetzt, wird das Ergebnis pro Quelle so lange wiederverwendet (spart Abfragen).</span>
 	              </label>
 
 	              <label class="field">

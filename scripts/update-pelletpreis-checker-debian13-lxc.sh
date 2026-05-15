@@ -29,6 +29,9 @@ BRANCH="${BRANCH:-main}"
 
 ENV_FILE="${ENV_FILE:-/etc/${APP_NAME}.env}"
 
+# Default repo URL (used when installation has no .git checkout).
+DEFAULT_REPO_URL="${DEFAULT_REPO_URL:-https://github.com/Schello805/pelletspreise.git}"
+
 # If not explicitly set, we auto-detect whether better-sqlite3 was present before npm ci.
 INSTALL_SQLITE="${INSTALL_SQLITE:-auto}"
 # If set, run Playwright browser install after updating.
@@ -117,9 +120,8 @@ update_checkout_git() {
 
 update_checkout_clone_rsync() {
   if [[ -z "$REPO_URL" ]]; then
-    echo "No git checkout in $APP_DIR and REPO_URL is empty." >&2
-    echo "Either reinstall with REPO_URL, or run this script with REPO_URL set." >&2
-    exit 1
+    REPO_URL="$DEFAULT_REPO_URL"
+    log "REPO_URL not set and no .git found -> using default: $REPO_URL"
   fi
 
   ensure_rsync
@@ -138,6 +140,7 @@ update_checkout_clone_rsync() {
     "$tmp/repo/" "$APP_DIR/"
 
   chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
+  chmod +x "$APP_DIR/scripts/"*.sh 2>/dev/null || true
 }
 
 install_deps() {

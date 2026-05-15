@@ -68,7 +68,7 @@ export async function writeCache({ projectRoot, cache }) {
   await writeJsonAtomic(filePath, normalized);
 }
 
-export async function getCachedResult({ projectRoot, sourceId, query }) {
+export async function getCachedResult({ projectRoot, sourceId, query, cacheHours = null }) {
   const db = await getDb({ projectRoot });
   if (db) {
     if (!triedMigrateToDb) {
@@ -98,12 +98,18 @@ export async function getCachedResult({ projectRoot, sourceId, query }) {
     }
 
     const key = makeKey({ sourceId, query });
-    const row = db.prepare("SELECT json FROM cache WHERE key = ? AND dateKey = ?").get(key, berlinDateKey());
+    const row = db.prepare("SELECT dateKey, storedAt, json FROM cache WHERE key = ?").get(key);
     if (!row || !row.json) return null;
     try {
       const result = JSON.parse(row.json);
       if (!result || typeof result !== "object") return null;
       if (!result.ok) return null;
+      const storedAtMs = Date.parse(String(row.storedAt || ""));
+      const ageOk =
+        typeof cacheHours === "number" && Number.isFinite(cacheHours) && cacheHours > 0
+          ? Number.isFinite(storedAtMs) && Date.now() - storedAtMs <= cacheHours * 60 * 60 * 1000
+          : String(row.dateKey || "") === berlinDateKey();
+      if (!ageOk) return null;
       return { ...result, cached: true };
     } catch {
       return null;
@@ -114,7 +120,12 @@ export async function getCachedResult({ projectRoot, sourceId, query }) {
   const key = makeKey({ sourceId, query });
   const item = cache.items[key];
   if (!item || typeof item !== "object") return null;
-  if (item.dateKey !== berlinDateKey()) return null;
+  const storedAtMs = Date.parse(String(item.storedAt || ""));
+  const ageOk =
+    typeof cacheHours === "number" && Number.isFinite(cacheHours) && cacheHours > 0
+      ? Number.isFinite(storedAtMs) && Date.now() - storedAtMs <= cacheHours * 60 * 60 * 1000
+      : item.dateKey === berlinDateKey();
+  if (!ageOk) return null;
   if (!item.result || typeof item.result !== "object") return null;
   if (!item.result.ok) return null;
   return { ...item.result, cached: true };
