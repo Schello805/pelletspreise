@@ -38,6 +38,28 @@ Optional (für Playwright-Quellen wie „HeizPellets24 Angebotsliste“):
 - Ergebnisse: Deutschland-Ø getrennt von bestellbaren Angeboten
 - Historie: Raw + Tageswerte inkl. Chart & Analyse
 - Export: CSV/JSON (raw oder daily)
+- Alarme: E-Mail bei Schwellwert (€/t)
+
+## Alarme (E-Mail)
+
+Im Tab „Alarme“ kannst du Regeln anlegen wie: „Wenn Quelle X ≤ 360 €/t → E-Mail schicken“.
+
+Wichtig: Alarme werden nur ausgewertet, wenn ein Wert in die Historie geschrieben wird (z. B. durch „Auto 1×/Tag“).
+
+### SMTP konfigurieren (Debian/LXC)
+
+In `/etc/pelletpreis-checker.env` (oder via Installer) folgende Variablen setzen und dann den Service neu starten:
+
+- `SMTP_HOST` (z. B. `mail.example.com`)
+- `SMTP_PORT` (z. B. `587` oder `465`)
+- `SMTP_SECURE` (optional, `true`/`false`; default ist `true` bei Port `465`)
+- `SMTP_USER` / `SMTP_PASS` (optional, falls Auth benötigt)
+- `SMTP_FROM` (oder `CONTACT_EMAIL`)
+- `ALERT_TO` (Empfänger, Komma-separiert möglich)
+
+Restart:
+
+- `sudo systemctl restart pelletpreis-checker.service`
 
 ## Installation (Debian 13 / Proxmox LXC)
 

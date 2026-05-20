@@ -7,6 +7,9 @@
   "scripts": {
     "verify": "node --check pelletpreise/app.js && node --check pelletpreise/src/*.js && node --check server/server.js && node --check server/lib/*.js && node --check server/scrape/runner.js"
   },
+  "dependencies": {
+    "nodemailer": "^6.10.0"
+  },
   "devDependencies": {
     "playwright": "^1.59.1"
   }

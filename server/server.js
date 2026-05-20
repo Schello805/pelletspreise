@@ -8,6 +8,8 @@ import { getCachedResult, pruneCache, setCachedResult } from "./lib/cache.js";
 import { dailyRowsToCsv, getDailyHistory, rawItemsToCsv } from "./lib/history.js";
 import { checkScrapeAllowance, readRunsToday, recordRun } from "./lib/rateLimit.js";
 import { berlinDateKey, berlinHour, patchSettings, readSettings, writeSettings } from "./lib/settings.js";
+import { evaluateAlerts, patchAlerts, readAlerts, writeAlerts } from "./lib/alerts.js";
+import { getEmailConfig, sendAlertEmail } from "./lib/email.js";
 import { jsonResponse, newId, normalizeQuery, readJsonBody, textResponse } from "./lib/util.js";
 import { runSource } from "./scrape/runner.js";
 
@@ -169,6 +171,7 @@ async function scrapeRunInternal({ query, onlyDemo = false, persistCached = fals
 
   const historyModeById = new Map(updatedSources.map((s) => [String(s?.id || ""), normalizeHistoryMode(s?.historyMode)]));
 
+  const persistedItems = [];
   for (const r of results) {
     // Only persist non-cached runs (so daily caching keeps history clean).
     if (!persistCached && r && r.cached) continue;
@@ -177,6 +180,53 @@ async function scrapeRunInternal({ query, onlyDemo = false, persistCached = fals
     const prepared = applyHistoryModeToResult({ ...r, query }, mode);
     if (!prepared) continue;
     await appendHistory({ projectRoot, item: prepared });
+    persistedItems.push(prepared);
+  }
+
+  // Evaluate alarm rules based on what we actually persisted.
+  if (persistedItems.length) {
+    try {
+      const currentAlerts = await readAlerts({ projectRoot });
+      const { alerts: nextAlerts, triggers } = evaluateAlerts({ alerts: currentAlerts, items: persistedItems });
+
+      let nextRules = nextAlerts.rules.slice();
+      for (const trig of triggers) {
+        const rule = trig.rule;
+        const item = trig.item;
+        const price = item?.priceEurPerTon;
+        const dateKey = berlinDateKey(new Date(item?.retrievedAt || new Date()));
+        const subject = `Pelletpreis-Alarm: ${item.sourceName || item.sourceId} ≤ ${rule.thresholdEurPerTon} €/t`;
+        const text = [
+          `Auslöser: ${rule.name || rule.id}`,
+          `Quelle: ${item.sourceName || item.sourceId}`,
+          `Datum: ${dateKey}`,
+          `Preis: ${typeof price === "number" ? `${price} €/t` : "—"}`,
+          `Gesamt: ${typeof item.totalEur === "number" ? `${item.totalEur} €` : "—"}`,
+          `PLZ: ${item.query?.postalCode || "—"}`,
+          `Menge: ${item.query?.quantityTons || "—"} t`,
+          `Produkt: ${item.query?.product || "—"}`,
+          item.url ? `Link: ${item.url}` : "",
+          "",
+          "Hinweis: Dieser Alarm wird nur ausgelöst, wenn ein Wert in die Historie geschrieben wird (z. B. Auto-Run 1×/Tag).",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        const idx = nextRules.findIndex((r) => String(r.id) === String(rule.id));
+        if (idx < 0) continue;
+
+        try {
+          await sendAlertEmail({ subject, text });
+          nextRules[idx] = { ...nextRules[idx], lastSentAt: new Date().toISOString(), lastSentPriceEurPerTon: price, lastError: null };
+        } catch (err) {
+          nextRules[idx] = { ...nextRules[idx], lastError: err?.message || String(err) };
+        }
+      }
+
+      await writeAlerts({ projectRoot, alerts: { ...nextAlerts, rules: nextRules } });
+    } catch {
+      // ignore alert failures (must not break scrape)
+    }
   }
 
   const sorted = results.slice().sort((a, b) => {
@@ -471,6 +521,36 @@ async function handleApi(req, res, url) {
     const next = patchSettings(current, patch);
     await writeSettings({ projectRoot, settings: next });
     return jsonResponse(res, 200, { ok: true, settings: next });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/alerts") {
+    const alerts = await readAlerts({ projectRoot });
+    return jsonResponse(res, 200, { ok: true, alerts });
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/alerts") {
+    const body = (await readJsonBody(req)) || {};
+    const patch = body.alerts || body.patch || body || {};
+    const current = await readAlerts({ projectRoot });
+    const next = patchAlerts(current, patch);
+    await writeAlerts({ projectRoot, alerts: next });
+    return jsonResponse(res, 200, { ok: true, alerts: next });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/email/config") {
+    const cfg = getEmailConfig();
+    return jsonResponse(res, 200, {
+      ok: true,
+      email: {
+        configured: Boolean(cfg.ok),
+        host: cfg.host ? String(cfg.host) : null,
+        port: cfg.port,
+        secure: Boolean(cfg.secure),
+        from: cfg.from ? String(cfg.from) : null,
+        to: cfg.to ? String(cfg.to) : null,
+        hasAuth: Boolean(cfg.auth),
+      },
+    });
   }
 
   if (req.method === "GET" && url.pathname === "/api/debug/heizpellets24-offer") {

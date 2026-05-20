@@ -71,6 +71,8 @@ const state = {
   _dailyExportParams: "",
   settings: null,
   diagnostics: null,
+  alerts: null,
+  email: null,
 };
 
 function renderOverview({ query, avgResults, offerRows }) {
@@ -412,6 +414,7 @@ function setupTabs() {
   const panels = {
     query: $("tab-query"),
     sources: $("tab-sources"),
+    alarms: $("tab-alarms"),
     history: $("tab-history"),
   };
 
@@ -433,8 +436,112 @@ function setupTabs() {
         await refreshDailyHistory({ apiFetch, $, state, toast, renderDailyHistory }).catch(() => {});
         await refreshHistory().catch((e) => toast(e.message, { kind: "error" }));
       }
+      if (name === "alarms") {
+        await refreshSettings().catch(() => {});
+        await refreshSources().catch(() => {});
+        await refreshEmailConfig().catch(() => {});
+        await refreshAlerts().catch((e) => toast(e.message, { kind: "error" }));
+      }
     }),
   );
+}
+
+function newLocalId(prefix = "id") {
+  const rand = Math.random().toString(16).slice(2, 10);
+  return `${prefix}_${Date.now()}_${rand}`;
+}
+
+function renderEmailConfig(email) {
+  const el = document.getElementById("emailConfigStatus");
+  if (!el) return;
+  if (!email) {
+    el.textContent = "E-Mail: —";
+    el.className = "badge text-bg-secondary border border-secondary-subtle";
+    el.title = "SMTP-Konfiguration unbekannt.";
+    return;
+  }
+  if (!email.configured) {
+    el.textContent = "E-Mail: nicht konfiguriert";
+    el.className = "badge text-bg-warning text-dark border border-warning-subtle";
+    el.title =
+      "SMTP ist nicht konfiguriert. Setze in /etc/pelletpreis-checker.env z. B. SMTP_HOST, SMTP_FROM, ALERT_TO (und optional SMTP_USER/SMTP_PASS). Danach: systemctl restart pelletpreis-checker.service";
+    return;
+  }
+  el.textContent = "E-Mail: OK";
+  el.className = "badge text-bg-success border border-success-subtle";
+  el.title = `SMTP: ${email.host || "—"}:${email.port || ""} → ${email.to || "—"}`;
+}
+
+async function refreshEmailConfig() {
+  const data = await apiFetch("/api/email/config");
+  state.email = data.email || null;
+  renderEmailConfig(state.email);
+}
+
+function renderAlerts() {
+  const body = document.getElementById("alertsBody");
+  if (!body) return;
+  const alerts = state.alerts;
+  const rules = Array.isArray(alerts?.rules) ? alerts.rules : [];
+  const sourcesById = new Map((state.sources || []).map((s) => [String(s.id), s]));
+
+  // Populate add form select
+  const sel = document.getElementById("alert_sourceId");
+  if (sel) {
+    const cur = String(sel.value || "");
+    const opts = state.sources
+      .filter((s) => s && s.enabled)
+      .map((s) => `<option value="${escapeAttr(s.id)}">${escapeHtml(s.name)}</option>`)
+      .join("");
+    sel.innerHTML = opts || `<option value="">(keine aktivierten Quellen)</option>`;
+    if (cur && state.sources.some((s) => String(s.id) === cur)) sel.value = cur;
+  }
+
+  if (!rules.length) {
+    body.innerHTML = `<tr><td colspan="7" class="muted">Noch keine Alarme angelegt.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = rules
+    .map((r) => {
+      const src = sourcesById.get(String(r.sourceId || "")) || null;
+      const srcName = src ? src.name : r.sourceId || "—";
+      const enabled = r.enabled ? "checked" : "";
+      const lastMail = r.lastSentAt ? fmtTime(r.lastSentAt) : "—";
+      const status = r.lastError ? `<span class="status err" title="${escapeAttr(r.lastError)}">Fehler</span>` : `<span class="status ok">OK</span>`;
+      const name = r.name ? escapeHtml(String(r.name)) : `<span class="muted">—</span>`;
+      const thr = typeof r.thresholdEurPerTon === "number" ? r.thresholdEurPerTon : "";
+      return `<tr>
+        <td><input type="checkbox" data-action="toggleAlert" data-id="${escapeAttr(r.id)}" ${enabled} /></td>
+        <td>${name}</td>
+        <td>${escapeHtml(srcName)}</td>
+        <td class="right">
+          <input class="form-control form-control-sm" style="max-width: 140px; margin-left:auto;" type="number" step="0.01" min="1"
+            value="${escapeAttr(String(thr))}" data-action="threshold" data-id="${escapeAttr(r.id)}" />
+        </td>
+        <td class="muted right">${escapeHtml(lastMail)}</td>
+        <td>${status}</td>
+        <td class="right">
+          <button class="btn btn-outline-light btn-sm" type="button" data-action="saveAlert" data-id="${escapeAttr(r.id)}">Speichern</button>
+          <button class="btn btn-outline-danger btn-sm" type="button" data-action="deleteAlert" data-id="${escapeAttr(r.id)}">Löschen</button>
+        </td>
+      </tr>`;
+    })
+    .join("");
+}
+
+async function refreshAlerts() {
+  const data = await apiFetch("/api/alerts");
+  state.alerts = data.alerts || null;
+  renderAlerts();
+}
+
+async function saveAlertsToServer() {
+  const rules = Array.isArray(state.alerts?.rules) ? state.alerts.rules : [];
+  const data = await apiFetch("/api/alerts", { method: "PUT", body: JSON.stringify({ alerts: { rules } }) });
+  state.alerts = data.alerts || null;
+  renderAlerts();
+  return state.alerts;
 }
 
 function setupEvents() {
@@ -487,6 +594,92 @@ function setupEvents() {
       } catch (err) {
         autoCb.checked = Boolean(state.settings?.autoDailyEnabled);
         toast(err.message || "Fehler", { kind: "error" });
+      }
+    });
+  }
+
+  const addAlertBtn = document.getElementById("addAlertBtn");
+  if (addAlertBtn) {
+    addAlertBtn.addEventListener("click", async () => {
+      try {
+        const sourceId = String(document.getElementById("alert_sourceId")?.value || "").trim();
+        const threshold = Number(document.getElementById("alert_threshold")?.value || "");
+        const minIntervalHours = Number(document.getElementById("alert_minIntervalHours")?.value || 12);
+        const name = String(document.getElementById("alert_name")?.value || "").trim();
+        const matchQuery = Boolean(document.getElementById("alert_matchQuery")?.checked);
+
+        if (!sourceId) return toast("Bitte eine Quelle auswählen.", { kind: "error" });
+        if (!Number.isFinite(threshold) || threshold <= 0) return toast("Bitte einen gültigen Schwellwert (€/t) eingeben.", { kind: "error" });
+
+        const baseQuery = state.lastQuery || state.settings?.lastQuery || null;
+        const rule = {
+          id: newLocalId("al"),
+          enabled: true,
+          name,
+          sourceId,
+          thresholdEurPerTon: threshold,
+          minIntervalHours: Number.isFinite(minIntervalHours) ? minIntervalHours : 12,
+          matchQuery,
+          query: matchQuery ? baseQuery : null,
+        };
+
+        const cur = state.alerts && typeof state.alerts === "object" ? state.alerts : { rules: [] };
+        state.alerts = { ...cur, rules: [...(cur.rules || []), rule] };
+        await saveAlertsToServer();
+
+        document.getElementById("alert_threshold").value = "";
+        document.getElementById("alert_name").value = "";
+        toast("Alarm gespeichert.", { kind: "success" });
+      } catch (err) {
+        toast(err.message || "Fehler", { kind: "error" });
+      }
+    });
+  }
+
+  const alertsBody = document.getElementById("alertsBody");
+  if (alertsBody) {
+    alertsBody.addEventListener("change", (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const action = t.dataset.action;
+      const id = t.dataset.id;
+      if (!action || !id) return;
+      const rules = Array.isArray(state.alerts?.rules) ? state.alerts.rules : [];
+      const idx = rules.findIndex((r) => String(r.id) === String(id));
+      if (idx < 0) return;
+
+      if (action === "toggleAlert" && t instanceof HTMLInputElement) {
+        rules[idx] = { ...rules[idx], enabled: Boolean(t.checked) };
+        state.alerts = { ...state.alerts, rules };
+      }
+      if (action === "threshold" && t instanceof HTMLInputElement) {
+        const n = Number(t.value);
+        if (Number.isFinite(n) && n > 0) {
+          rules[idx] = { ...rules[idx], thresholdEurPerTon: n };
+          state.alerts = { ...state.alerts, rules };
+        }
+      }
+    });
+
+    alertsBody.addEventListener("click", async (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const action = t.dataset.action;
+      const id = t.dataset.id;
+      if (!action || !id) return;
+
+      const rules = Array.isArray(state.alerts?.rules) ? state.alerts.rules : [];
+      const idx = rules.findIndex((r) => String(r.id) === String(id));
+      if (idx < 0) return;
+
+      if (action === "deleteAlert") {
+        state.alerts = { ...state.alerts, rules: rules.filter((r) => String(r.id) !== String(id)) };
+        await saveAlertsToServer();
+        toast("Alarm gelöscht.", { kind: "success" });
+      }
+      if (action === "saveAlert") {
+        await saveAlertsToServer();
+        toast("Alarm gespeichert.", { kind: "success" });
       }
     });
   }

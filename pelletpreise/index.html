@@ -24,6 +24,7 @@
 	          <div class="navbar-nav me-auto mb-2 mb-lg-0">
 	            <button class="nav-link active tab" type="button" data-tab="query">Abfrage</button>
 	            <button class="nav-link tab" type="button" data-tab="sources">Quellen</button>
+	            <button class="nav-link tab" type="button" data-tab="alarms">Alarme</button>
 	            <button class="nav-link tab" type="button" data-tab="history">Historie</button>
 	          </div>
 	          <div class="d-flex">
@@ -373,6 +374,87 @@
             </div>
           </form>
         </dialog>
+      </section>
+
+		      <section class="panel" id="tab-alarms" role="tabpanel">
+		        <div class="card bg-transparent border-secondary-subtle">
+	          <div class="card-header header-row">
+	            <div>
+	              <h1 class="card-title">Alarme</h1>
+	              <p class="card-subtitle">Sende eine E-Mail, wenn ein Preis unter einen Schwellwert fällt (pro Quelle/Serie).</p>
+	            </div>
+	            <div class="right actions-inline">
+	              <span class="badge text-bg-secondary border border-secondary-subtle" id="emailConfigStatus" title="SMTP-Konfiguration">E-Mail: …</span>
+	            </div>
+	          </div>
+
+	          <div class="px-3 pt-3">
+	            <details class="card bg-transparent border-secondary-subtle" style="margin:0;">
+	              <summary class="card-header" style="cursor:pointer;">
+	                <div>
+	                  <div class="card-title" style="font-size: 15px;">Alarm hinzufügen</div>
+	                  <div class="card-subtitle">Wird nur ausgelöst, wenn ein Wert in die Historie geschrieben wird (z. B. Auto 1×/Tag).</div>
+	                </div>
+	              </summary>
+	              <div class="grid" style="padding: 12px;">
+	                <label class="field" style="grid-column: span 12;">
+	                  <span class="label">Quelle/Serie</span>
+	                  <select id="alert_sourceId"></select>
+	                  <span class="help">Wähle die Zeitreihe, die überwacht werden soll.</span>
+	                </label>
+
+	                <label class="field">
+	                  <span class="label">Schwellwert (€/t)</span>
+	                  <input id="alert_threshold" type="number" min="1" step="0.01" placeholder="z. B. 360" />
+	                  <span class="help">Alarm, wenn Preis ≤ Schwellwert.</span>
+	                </label>
+
+	                <label class="field">
+	                  <span class="label">Mindestabstand (h)</span>
+	                  <input id="alert_minIntervalHours" type="number" min="1" max="168" step="1" value="12" />
+	                  <span class="help">Verhindert E-Mail-Spam, falls der Preis dauerhaft niedrig ist.</span>
+	                </label>
+
+	                <label class="field" style="grid-column: span 12;">
+	                  <span class="label">Name (optional)</span>
+	                  <input id="alert_name" placeholder="z. B. ‚Sommerdeal‘" />
+	                  <span class="help">Nur zur besseren Übersicht.</span>
+	                </label>
+
+	                <label class="field" style="grid-column: span 12;">
+	                  <div class="only-orderable-inner">
+	                    <input id="alert_matchQuery" type="checkbox" checked />
+	                    <span class="label" style="margin:0;">nur für aktuelle Abfrage (PLZ/Menge/Produkt)</span>
+	                  </div>
+	                  <span class="help">Wenn deaktiviert, gilt der Alarm für jede Abfrage, die diese Quelle liefert.</span>
+	                </label>
+
+	                <div class="field actions" style="grid-column: span 12;">
+	                  <button class="btn btn-primary" type="button" id="addAlertBtn">Alarm speichern</button>
+	                </div>
+	              </div>
+	            </details>
+	          </div>
+
+	          <div class="table-wrap px-3 pb-3" style="margin-top: 12px;">
+	            <table class="table table-sm table-hover align-middle" aria-label="Alarmregeln">
+	              <thead>
+	                <tr>
+	                  <th>Aktiv</th>
+	                  <th>Name</th>
+	                  <th>Quelle</th>
+	                  <th class="right">Schwellwert (€/t)</th>
+	                  <th class="right">Letzte Mail</th>
+	                  <th>Status</th>
+	                  <th class="right">Aktion</th>
+	                </tr>
+	              </thead>
+	              <tbody id="alertsBody">
+	                <tr><td colspan="7" class="muted">Lade Alarme …</td></tr>
+	              </tbody>
+	            </table>
+	          </div>
+        </div>
       </section>
 
 		      <section class="panel" id="tab-history" role="tabpanel">
