@@ -636,6 +636,25 @@ function setupEvents() {
     });
   }
 
+  const sendTestEmailBtn = document.getElementById("sendTestEmailBtn");
+  if (sendTestEmailBtn) {
+    sendTestEmailBtn.addEventListener("click", async () => {
+      try {
+        await refreshEmailConfig().catch(() => {});
+        if (!state.email?.configured) {
+          return toast("SMTP ist nicht konfiguriert (siehe Tooltip bei „E-Mail“).", { kind: "error", timeoutMs: 5200 });
+        }
+        sendTestEmailBtn.disabled = true;
+        await apiFetch("/api/email/test", { method: "POST", body: JSON.stringify({}) });
+        toast("Testmail wurde gesendet.", { kind: "success", timeoutMs: 4200 });
+      } catch (err) {
+        toast(err.message || "Fehler beim Senden der Testmail.", { kind: "error", timeoutMs: 5200 });
+      } finally {
+        sendTestEmailBtn.disabled = false;
+      }
+    });
+  }
+
   const alertsBody = document.getElementById("alertsBody");
   if (alertsBody) {
     alertsBody.addEventListener("change", (e) => {

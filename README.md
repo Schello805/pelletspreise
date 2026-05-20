@@ -61,6 +61,12 @@ Restart:
 
 - `sudo systemctl restart pelletpreis-checker.service`
 
+### Testmail senden
+
+- Im Tab „Alarme“ auf „Testmail“ klicken **oder**
+- per API:
+  - `curl -sS -X POST http://127.0.0.1:8000/api/email/test -H 'content-type: application/json' -d '{}'`
+
 ## Installation (Debian 13 / Proxmox LXC)
 
 Im Repo liegt ein Install-Script (systemd Service):

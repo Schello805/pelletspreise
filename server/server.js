@@ -553,6 +553,21 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/email/test") {
+    const body = (await readJsonBody(req)) || {};
+    const subject = body?.subject ? String(body.subject) : "Pelletpreis-Checker: Testmail";
+    const text =
+      body?.text
+        ? String(body.text)
+        : `Das ist eine Testmail vom Pelletpreis-Checker.\n\nZeit: ${new Date().toISOString()}\nServer: ${BASE_URL}\n`;
+    try {
+      await sendAlertEmail({ subject, text });
+      return jsonResponse(res, 200, { ok: true });
+    } catch (err) {
+      return jsonResponse(res, 500, { ok: false, error: err?.message || String(err) });
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/api/debug/heizpellets24-offer") {
     const postalCode = String(url.searchParams.get("postalCode") || "").trim();
     const quantityTons = Number(url.searchParams.get("quantityTons") || "3");
