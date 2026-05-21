@@ -334,10 +334,13 @@ body {
   background: rgba(10, 14, 26, 0.86);
   backdrop-filter: blur(8px);
   padding: 10px 12px;
-  border-radius: 999px;
+  border-radius: 14px;
   box-shadow: var(--pp-shadow);
   color: rgba(255, 255, 255, 0.92);
   max-width: min(680px, calc(100% - 28px));
+  text-align: center;
+  line-height: 1.35;
+  word-break: break-word;
   opacity: 0;
   pointer-events: none;
   transition: opacity 140ms ease, transform 140ms ease;
@@ -354,6 +357,10 @@ body {
 
 .toast[data-kind="success"] {
   border-color: rgba(99, 230, 190, 0.45);
+}
+
+.toast[data-kind="warning"] {
+  border-color: rgba(255, 199, 0, 0.55);
 }
 
 /* Dialog (native <dialog>) */
