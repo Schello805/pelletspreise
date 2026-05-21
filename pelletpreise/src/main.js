@@ -572,7 +572,12 @@ function setupEvents() {
       renderResults({ query: data.query, results: data.results || [] });
       state.lastQuery = data.query;
       state.lastResults = data.results || [];
-      toast("Fertig.", { kind: "success" });
+      if (data?.meta?.rateLimited) {
+        const msg = data?.meta?.rateLimit?.error || "Rate-Limit aktiv – zeige Cache-Daten (falls vorhanden).";
+        toast(msg, { kind: "warning", timeoutMs: 6500 });
+      } else {
+        toast("Fertig.", { kind: "success" });
+      }
     } catch (err) {
       const msg = err?.name === "AbortError" ? "Zeitüberschreitung beim Abruf (bitte erneut versuchen)." : err.message || "Fehler";
       toast(msg, { kind: "error", timeoutMs: 5200 });

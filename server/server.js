@@ -122,13 +122,38 @@ async function scrapeRunInternal({ query, onlyDemo = false, persistCached = fals
   }
 
   const needsFreshRun = httpToRun.length > 0 || pwToRun.length > 0;
+  let rateLimitInfo = null;
   if (needsFreshRun) {
     const allowance = await checkScrapeAllowance({ projectRoot });
     if (!allowance.allowed) {
-      const err = new Error(allowance.error || "Abfrage nicht erlaubt.");
-      err.statusCode = allowance.statusCode || 429;
-      err.details = allowance.details || {};
-      throw err;
+      // UX: Do not hard-fail. Return cached values we already have, and mark the remaining sources as blocked.
+      const nowIso = new Date().toISOString();
+      rateLimitInfo = { error: allowance.error || "Abfrage nicht erlaubt.", details: allowance.details || {} };
+      for (const s of [...httpToRun, ...pwToRun]) {
+        results.push({
+          ok: false,
+          sourceId: s.id,
+          sourceName: s.name,
+          group: s.group || "offers",
+          retrievedAt: nowIso,
+          url: null,
+          asOf: null,
+          priceEurPerTon: null,
+          totalEur: null,
+          error: rateLimitInfo.error,
+          rateLimited: true,
+        });
+      }
+      // We deliberately do NOT record a run when blocked.
+      const sortedBlocked = results.slice().sort((a, b) => {
+        const ao = a && a.ok;
+        const bo = b && b.ok;
+        if (ao && bo) return (a.priceEurPerTon ?? Infinity) - (b.priceEurPerTon ?? Infinity);
+        if (ao) return -1;
+        if (bo) return 1;
+        return 0;
+      });
+      return { ok: true, query, results: sortedBlocked, meta: { needsFreshRun: true, rateLimited: true, rateLimit: rateLimitInfo } };
     }
     await recordRun({ projectRoot }).catch(() => {});
   }
