@@ -29,6 +29,8 @@ function normalizeRule(input) {
   const minIntervalHoursRaw = obj.minIntervalHours == null ? 12 : Number(obj.minIntervalHours);
   const minIntervalHours =
     Number.isFinite(minIntervalHoursRaw) && minIntervalHoursRaw > 0 ? Math.max(1, Math.min(168, minIntervalHoursRaw)) : 12;
+  const rearmRaw = obj.rearmAboveEurPerTon == null ? thresholdEurPerTon + 2 : Number(obj.rearmAboveEurPerTon);
+  const rearmAboveEurPerTon = Number.isFinite(rearmRaw) ? Math.max(thresholdEurPerTon, rearmRaw) : thresholdEurPerTon + 2;
 
   return {
     id,
@@ -40,6 +42,8 @@ function normalizeRule(input) {
     matchQuery,
     query: matchQuery ? query : null,
     minIntervalHours,
+    repeatWhileBelow: Boolean(obj.repeatWhileBelow ?? false),
+    rearmAboveEurPerTon,
     // runtime state
     lastBelow: Boolean(obj.lastBelow ?? false),
     lastSentAt: obj.lastSentAt ? String(obj.lastSentAt) : null,
@@ -99,7 +103,10 @@ function shouldSendNow(rule, nowMs, currentPrice) {
   if (!rule.enabled) return { send: false, reason: "disabled" };
 
   const isBelow = typeof currentPrice === "number" && currentPrice <= rule.thresholdEurPerTon;
-  if (!isBelow) return { send: false, reason: "not_below", setBelow: false };
+  if (!isBelow) {
+    const rearmed = currentPrice > Number(rule.rearmAboveEurPerTon ?? rule.thresholdEurPerTon);
+    return { send: false, reason: rearmed ? "rearmed" : "above_threshold", setBelow: rearmed ? false : rule.lastBelow };
+  }
 
   const lastSentAtMs = rule.lastSentAt ? Date.parse(rule.lastSentAt) : 0;
   const minIntervalMs = Number(rule.minIntervalHours || 12) * 60 * 60 * 1000;
@@ -108,7 +115,7 @@ function shouldSendNow(rule, nowMs, currentPrice) {
   // Edge trigger (crossing): send immediately when it becomes below.
   const edge = !rule.lastBelow;
   if (edge) return { send: true, reason: "edge", setBelow: true };
-  if (intervalOk) return { send: true, reason: "interval", setBelow: true };
+  if (rule.repeatWhileBelow && intervalOk) return { send: true, reason: "interval", setBelow: true };
   return { send: false, reason: "cooldown", setBelow: true };
 }
 
@@ -139,8 +146,6 @@ export function evaluateAlerts({ alerts, items, now = new Date() } = {}) {
 
     if (decision.send) {
       results.push({ rule, item, reason: decision.reason });
-    } else if (decision.reason === "not_below") {
-      updated.lastBelow = false;
     }
 
     return updated;
@@ -148,4 +153,3 @@ export function evaluateAlerts({ alerts, items, now = new Date() } = {}) {
 
   return { alerts: { ...cur, rules: nextRules }, triggers: results };
 }
-

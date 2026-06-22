@@ -29,6 +29,10 @@ BRANCH="${BRANCH:-main}"
 
 ENV_FILE="${ENV_FILE:-/etc/${APP_NAME}.env}"
 UNIT_FILE="${UNIT_FILE:-/etc/systemd/system/${APP_NAME}.service}"
+UPDATE_SERVICE_FILE="/etc/systemd/system/${APP_NAME}-update.service"
+UPDATE_PATH_FILE="/etc/systemd/system/${APP_NAME}-update.path"
+UPDATE_DIR="/var/lib/${APP_NAME}"
+UPDATE_REQUEST_FILE="${UPDATE_DIR}/update.request"
 
 # Default repo URL (used when installation has no .git checkout).
 DEFAULT_REPO_URL="${DEFAULT_REPO_URL:-https://github.com/Schello805/pelletspreise.git}"
@@ -109,6 +113,42 @@ ensure_rsync() {
 ensure_runtime_dirs() {
   mkdir -p "$APP_DIR/server/data"
   chown -R "$APP_USER:$APP_GROUP" "$APP_DIR/server/data"
+}
+
+ensure_frontend_update_trigger() {
+  mkdir -p "$UPDATE_DIR"
+  chown "$APP_USER:$APP_GROUP" "$UPDATE_DIR"
+  chmod 0750 "$UPDATE_DIR"
+
+  cat >"$UPDATE_SERVICE_FILE" <<EOF
+[Unit]
+Description=Pelletpreis-Checker update requested from web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStartPre=/usr/bin/rm -f ${UPDATE_REQUEST_FILE}
+ExecStart=/bin/bash ${APP_DIR}/scripts/update-pelletpreis-checker-debian13-lxc.sh
+StandardOutput=journal
+StandardError=journal
+EOF
+
+  cat >"$UPDATE_PATH_FILE" <<EOF
+[Unit]
+Description=Watch for Pelletpreis-Checker frontend update requests
+
+[Path]
+PathExists=${UPDATE_REQUEST_FILE}
+Unit=${APP_NAME}-update.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now "${APP_NAME}-update.path"
 }
 
 ensure_lxc_compat_override() {
@@ -259,10 +299,14 @@ health_check() {
   source "$ENV_FILE"
   # Always health-check via localhost (hairpin/LAN-IP often fails inside LXC).
   local url="http://127.0.0.1:${PORT:-8000}"
+  local -a curl_auth=()
+  if [[ -n "${APP_PASSWORD:-}" ]]; then
+    curl_auth=(-u "${APP_USERNAME:-admin}:${APP_PASSWORD}")
+  fi
 
   log "Health check: ${url}/api/health"
   sleep 1
-  if curl -sS -m 4 "${url}/api/health" >/dev/null; then
+  if curl -sS -m 4 "${curl_auth[@]}" "${url}/api/health" >/dev/null; then
     log "OK: ${url}/pelletpreise/"
   else
     log "Health check failed. Logs:"
@@ -295,6 +339,7 @@ main() {
   ensure_runtime_dirs
   ensure_lxc_compat_override
   ensure_env_listen_all
+  ensure_frontend_update_trigger
   install_deps
   install_optional_sqlite "$had_sqlite"
   install_playwright_browsers

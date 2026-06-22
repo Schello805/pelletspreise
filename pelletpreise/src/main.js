@@ -50,6 +50,12 @@ function normalizeExtract(ex) {
 }
 
 function statusCellHtml(result) {
+  if (result?.ok && result?.anomaly) {
+    const a = result.anomaly;
+    const direction = a.type === "unusually_low" ? "auffällig niedrig" : "auffällig hoch";
+    const hint = `${direction}: ${a.deviationPercent}% gegenüber Median ${fmtNumber(a.baselineEurPerTon)} €/t (${a.sampleSize} Werte)`;
+    return `<span class="status warn" title="${escapeAttr(hint)}">Prüfen</span>`;
+  }
   if (result?.ok) return `<span class="status ok">OK</span>`;
   const msg = result?.error ? escapeHtml(String(result.error)) : "Fehler";
   return `<span class="status err">${msg}</span>`;
@@ -73,7 +79,35 @@ const state = {
   diagnostics: null,
   alerts: null,
   email: null,
+  scrapeStatus: null,
+  update: null,
 };
+
+function renderScrapeStatus(status) {
+  const host = document.getElementById("scrapeStatus");
+  if (!host) return;
+  if (!status) {
+    host.textContent = "Abrufstatus nicht verfügbar.";
+    return;
+  }
+  const rate = status.rateLimit || {};
+  const cached = (status.sources || []).filter((source) => source.cached).length;
+  const total = (status.sources || []).length;
+  const next = rate.nextAllowedAt ? fmtTime(rate.nextAllowedAt) : null;
+  const text = rate.allowed
+    ? `Abruf bereit · ${cached}/${total} Quellen aus Cache · noch ${rate.remainingRuns ?? "—"} echte Abfrage(n) heute möglich`
+    : `Cache wird weiterhin angezeigt · ${cached}/${total} Quellen aktuell im Cache · nächste echte Abfrage: ${next || "morgen"}`;
+  host.className = `run-status${rate.allowed ? " is-ready" : " is-limited"}`;
+  host.textContent = text;
+  host.title = rate.error || "Cache schont die Quellen; echte Abrufe sind begrenzt.";
+}
+
+async function refreshScrapeStatus() {
+  const data = await apiFetch("/api/scrape/status");
+  state.scrapeStatus = data;
+  renderScrapeStatus(data);
+  return data;
+}
 
 function renderOverview({ query, avgResults, offerRows }) {
   const host = document.getElementById("overviewCards");
@@ -162,15 +196,16 @@ function renderOverview({ query, avgResults, offerRows }) {
   `;
 }
 
-function renderResults({ query, results }) {
+function renderResults({ query, results, meta = {} }) {
   const avgBody = $("resultsAvgBody");
   const offersBody = $("resultsOffersBody");
-  const meta = $("resultsMeta");
+  const metaEl = $("resultsMeta");
 
   const avgResults = (results || []).filter(isAverageResult);
   const offerResults = (results || []).filter((r) => !isAverageResult(r));
   state.lastOffersRows = buildOfferRowsFromResults(offerResults);
-  meta.textContent = `PLZ ${query.postalCode} · ${fmtNumber(query.quantityTons)} t · ${mapProductLabel(query.product)} · Ø ${avgResults.length} · Angebote ${state.lastOffersRows.length}`;
+  const limited = meta?.rateLimited ? " · Cache/Limit aktiv" : "";
+  metaEl.textContent = `PLZ ${query.postalCode} · ${fmtNumber(query.quantityTons)} t · ${mapProductLabel(query.product)} · Ø ${avgResults.length} · Angebote ${state.lastOffersRows.length}${limited}`;
 
   renderOverview({ query, avgResults, offerRows: state.lastOffersRows });
 
@@ -222,6 +257,11 @@ function renderSources(sources) {
     .map((s) => {
       const enabled = s.enabled ? "checked" : "";
       const last = s.lastRunAt ? fmtTime(s.lastRunAt) : "—";
+      const sourceHealth = s.lastError
+        ? `<span class="status err" title="${escapeAttr(String(s.lastError))}">Fehler</span>`
+        : s.lastSuccessAt
+          ? `<span class="status ok" title="Letzter erfolgreicher Abruf: ${escapeAttr(fmtTime(s.lastSuccessAt))}">OK</span>`
+          : `<span class="muted">—</span>`;
       const historyMode = String(s.historyMode || "auto");
       const hm = (value, label) => `<option value="${escapeAttr(value)}"${historyMode === value ? " selected" : ""}>${escapeHtml(label)}</option>`;
       const kindLabel =
@@ -243,7 +283,7 @@ function renderSources(sources) {
             ${hm("none", "Off")}
           </select>
         </td>
-        <td class="muted">${escapeHtml(last)}</td>
+        <td class="muted">${escapeHtml(last)}<br/>${sourceHealth}</td>
         <td class="right">
           <button class="btn btn-outline-light btn-sm" type="button" data-action="edit" data-id="${escapeAttr(s.id)}">Bearbeiten</button>
           <button class="btn btn-outline-danger btn-sm" type="button" data-action="delete" data-id="${escapeAttr(s.id)}">Löschen</button>
@@ -409,6 +449,61 @@ function setFooterVersion({ version, rev, updateAvailable, updateHint } = {}) {
   el.title = String(updateHint || "").trim();
 }
 
+function formatBytes(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderSystem() {
+  const host = document.getElementById("systemSummary");
+  const updateBtn = document.getElementById("runFrontendUpdateBtn");
+  if (!host) return;
+  const diag = state.diagnostics || {};
+  const update = state.update || {};
+  const rate = diag.rateLimit || state.scrapeStatus?.rateLimit || {};
+  const failed = Array.isArray(diag.sources?.failed) ? diag.sources.failed : [];
+  const storage = Array.isArray(diag.storage) ? diag.storage : [];
+  const updateText = update.updateAvailable ? "Neue Version verfügbar" : update.remoteOk ? "Auf dem aktuellen Stand" : "GitHub-Status nicht verfügbar";
+  const updateHint = update.frontendUpdateReady
+    ? "Das Update startet als systemd-Job; die Seite verbindet sich danach automatisch neu."
+    : "Frontend-Update benötigt APP_PASSWORD, ALLOW_FRONTEND_UPDATE=1 und den einmalig installierten systemd-Trigger.";
+
+  host.innerHTML = `
+    <div class="overview-card"><div class="overview-title">Abruflimit</div><div class="overview-value">${escapeHtml(String(rate.remainingRuns ?? "—"))}</div><div class="overview-meta">echte Abrufe heute verfügbar${rate.nextAllowedAt ? `<br/>Nächster Abruf: ${escapeHtml(fmtTime(rate.nextAllowedAt))}` : ""}</div></div>
+    <div class="overview-card"><div class="overview-title">Quellen</div><div class="overview-value">${escapeHtml(String(diag.sources?.enabled ?? "—"))}</div><div class="overview-meta">aktiv · ${escapeHtml(String(failed.length))} mit Fehler${failed.length ? `<br/>${escapeHtml(failed.map((source) => source.name).join(", "))}` : ""}</div></div>
+    <div class="overview-card"><div class="overview-title">E-Mail</div><div class="overview-value">${diag.email?.configured ? "Bereit" : "Offen"}</div><div class="overview-meta">${diag.email?.configured ? `Empfänger: ${escapeHtml(diag.email.to || "—")}` : "SMTP noch nicht vollständig konfiguriert"}</div></div>
+    <div class="overview-card"><div class="overview-title">Playwright</div><div class="overview-value">${diag.playwright?.chromiumOk ? "Bereit" : "Prüfen"}</div><div class="overview-meta">${diag.playwright?.chromiumOk ? "Chromium installiert" : "Browser fehlt oder Playwright nicht verfügbar"}</div></div>
+    <div class="overview-card"><div class="overview-title">Schutz</div><div class="overview-value">${diag.security?.passwordProtection ? "Passwort aktiv" : "LAN offen"}</div><div class="overview-meta">${diag.security?.passwordProtection ? `Benutzer: ${escapeHtml(diag.security.username || "admin")}` : "Optional: APP_PASSWORD setzen"}</div></div>
+    <div class="overview-card"><div class="overview-title">Update</div><div class="overview-value">${escapeHtml(updateText)}</div><div class="overview-meta">${escapeHtml(updateHint)}</div></div>
+    <div class="overview-card system-storage"><div class="overview-title">Lokaler Speicher</div><div class="overview-meta">${storage.length ? storage.map((entry) => `${escapeHtml(entry.name)}: ${escapeHtml(formatBytes(entry.bytes))}`).join("<br/>") : "—"}</div></div>
+  `;
+
+  if (updateBtn) {
+    const canRun = Boolean(update.updateAvailable && update.frontendUpdateReady && !update.updateRequested);
+    updateBtn.hidden = !update.updateAvailable;
+    updateBtn.disabled = !canRun;
+    updateBtn.title = updateHint;
+    updateBtn.textContent = update.updateRequested ? "Update wird gestartet …" : "Update installieren";
+  }
+}
+
+async function refreshSystem() {
+  const [diag, update, scrape] = await Promise.all([apiFetch("/api/diagnostics"), apiFetch("/api/update"), refreshScrapeStatus()]);
+  state.diagnostics = diag || null;
+  state.update = update || null;
+  state.scrapeStatus = scrape || null;
+  setFooterVersion({
+    version: update?.current?.version || diag?.version,
+    rev: update?.current?.rev,
+    updateAvailable: Boolean(update?.updateAvailable),
+    updateHint: update?.updateHint,
+  });
+  renderSystem();
+}
+
 function setupTabs() {
   const tabs = Array.from(document.querySelectorAll(".tab"));
   const panels = {
@@ -416,6 +511,7 @@ function setupTabs() {
     sources: $("tab-sources"),
     alarms: $("tab-alarms"),
     history: $("tab-history"),
+    system: $("tab-system"),
   };
 
   function activate(name) {
@@ -442,6 +538,7 @@ function setupTabs() {
         await refreshEmailConfig().catch(() => {});
         await refreshAlerts().catch((e) => toast(e.message, { kind: "error" }));
       }
+      if (name === "system") await refreshSystem().catch((e) => toast(e.message || "Diagnose nicht verfügbar", { kind: "error" }));
     }),
   );
 }
@@ -569,9 +666,10 @@ function setupEvents() {
     try {
       toast("Abruf läuft …", { timeoutMs: 1800 });
       const data = await apiFetch("/api/scrape/run", { method: "POST", body: JSON.stringify({ query }), timeoutMs: 60_000 });
-      renderResults({ query: data.query, results: data.results || [] });
+      renderResults({ query: data.query, results: data.results || [], meta: data.meta || {} });
       state.lastQuery = data.query;
       state.lastResults = data.results || [];
+      await refreshScrapeStatus().catch(() => {});
       if (data?.meta?.rateLimited) {
         const msg = data?.meta?.rateLimit?.error || "Rate-Limit aktiv – zeige Cache-Daten (falls vorhanden).";
         toast(msg, { kind: "warning", timeoutMs: 6500 });
@@ -610,8 +708,10 @@ function setupEvents() {
         const sourceId = String(document.getElementById("alert_sourceId")?.value || "").trim();
         const threshold = Number(document.getElementById("alert_threshold")?.value || "");
         const minIntervalHours = Number(document.getElementById("alert_minIntervalHours")?.value || 12);
+        const rearmAboveEurPerTon = Number(document.getElementById("alert_rearmAbove")?.value || "");
         const name = String(document.getElementById("alert_name")?.value || "").trim();
         const matchQuery = Boolean(document.getElementById("alert_matchQuery")?.checked);
+        const repeatWhileBelow = Boolean(document.getElementById("alert_repeatWhileBelow")?.checked);
 
         if (!sourceId) return toast("Bitte eine Quelle auswählen.", { kind: "error" });
         if (!Number.isFinite(threshold) || threshold <= 0) return toast("Bitte einen gültigen Schwellwert (€/t) eingeben.", { kind: "error" });
@@ -624,6 +724,8 @@ function setupEvents() {
           sourceId,
           thresholdEurPerTon: threshold,
           minIntervalHours: Number.isFinite(minIntervalHours) ? minIntervalHours : 12,
+          rearmAboveEurPerTon: Number.isFinite(rearmAboveEurPerTon) && rearmAboveEurPerTon >= threshold ? rearmAboveEurPerTon : threshold + 2,
+          repeatWhileBelow,
           matchQuery,
           query: matchQuery ? baseQuery : null,
         };
@@ -633,7 +735,9 @@ function setupEvents() {
         await saveAlertsToServer();
 
         document.getElementById("alert_threshold").value = "";
+        document.getElementById("alert_rearmAbove").value = "";
         document.getElementById("alert_name").value = "";
+        document.getElementById("alert_repeatWhileBelow").checked = false;
         toast("Alarm gespeichert.", { kind: "success" });
       } catch (err) {
         toast(err.message || "Fehler", { kind: "error" });
@@ -719,7 +823,7 @@ function setupEvents() {
     );
   });
 
-  ["dailyDays", "dailyGroupBy", "dailyOnlyOrderable", "dailyMetric", "dailySeriesSearch"].forEach((id) => {
+  ["dailyDays", "dailyGroupBy", "dailyOnlyOrderable", "dailyMetric", "dailySeriesSearch", "historyPostalCode", "historyProduct"].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener("input", () => refreshDailyHistory({ apiFetch, $, state, toast, renderDailyHistory }));
@@ -729,6 +833,24 @@ function setupEvents() {
     state.dailySeriesKey = String($("dailySeriesSelect").value || "");
     renderDailyHistory();
   });
+
+  const refreshSystemBtn = document.getElementById("refreshSystemBtn");
+  if (refreshSystemBtn) refreshSystemBtn.addEventListener("click", () => refreshSystem().catch((e) => toast(e.message || "Diagnose nicht verfügbar", { kind: "error" })));
+  const runUpdateBtn = document.getElementById("runFrontendUpdateBtn");
+  if (runUpdateBtn) {
+    runUpdateBtn.addEventListener("click", async () => {
+      if (!confirm("Update jetzt installieren? Die Webapp ist während des Neustarts kurz nicht erreichbar.")) return;
+      try {
+        runUpdateBtn.disabled = true;
+        await apiFetch("/api/update/run", { method: "POST", body: JSON.stringify({}) });
+        toast("Update angefordert. Die Seite wird in Kürze neu geladen.", { kind: "success", timeoutMs: 5200 });
+        window.setTimeout(() => window.location.reload(), 10_000);
+      } catch (err) {
+        runUpdateBtn.disabled = false;
+        toast(err.message || "Update konnte nicht gestartet werden.", { kind: "error", timeoutMs: 5200 });
+      }
+    });
+  }
   ["dailyCompareMode", "dailyCompareMax"].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -918,6 +1040,7 @@ export async function bootstrap() {
   await refreshSettings().catch(() => {});
   await refreshSources().catch(() => {});
   await refreshHistory().catch(() => {});
+  await refreshScrapeStatus().catch(() => {});
 
   // Auto-run once on page load so the start page shows current prices immediately.
   try {
@@ -929,9 +1052,10 @@ export async function bootstrap() {
       $("resultsOffersBody").innerHTML = `<tr><td colspan="7" class="muted">Abruf läuft …</td></tr>`;
       toast("Aktualisiere Preise …", { timeoutMs: 1500 });
       const data = await apiFetch("/api/scrape/run", { method: "POST", body: JSON.stringify({ query }), timeoutMs: 60_000 });
-      renderResults({ query: data.query, results: data.results || [] });
+      renderResults({ query: data.query, results: data.results || [], meta: data.meta || {} });
       state.lastQuery = data.query;
       state.lastResults = data.results || [];
+      await refreshScrapeStatus().catch(() => {});
     }
   } catch {
     // ignore auto-run failures (user can click manually)

@@ -92,13 +92,23 @@ export async function checkScrapeAllowance({
 } = {}) {
   const runs = await readRunsToday({ projectRoot, now });
   const minGapMs = Number(minGapHours) * 60 * 60 * 1000;
+  const details = {
+    maxRunsPerDay,
+    minGapHours,
+    runsToday: runs.map((d) => d.toISOString()),
+    remainingRuns: Math.max(0, maxRunsPerDay - runs.length),
+    nextAllowedAt: null,
+  };
 
   if (runs.length >= maxRunsPerDay) {
+    const tomorrow = new Date(now);
+    tomorrow.setHours(24, 0, 0, 0);
+    details.nextAllowedAt = tomorrow.toISOString();
     return {
       allowed: false,
       statusCode: 429,
       error: `Tageslimit erreicht (${runs.length}/${maxRunsPerDay}). Bitte morgen erneut versuchen.`,
-      details: { runsToday: runs.map((d) => d.toISOString()) },
+      details,
     };
   }
 
@@ -106,17 +116,26 @@ export async function checkScrapeAllowance({
     const first = runs[0];
     const earliestSecond = new Date(first.getTime() + minGapMs);
     if (now.getTime() < earliestSecond.getTime()) {
+      details.nextAllowedAt = earliestSecond.toISOString();
       return {
         allowed: false,
         statusCode: 429,
         error: `Heute lief bereits um ${fmtBerlinTime(first)} eine Abfrage. Die nächste ist frühestens ab ${fmtBerlinDateTime(
           earliestSecond,
         )} erlaubt (mind. ${minGapHours}h Abstand).`,
-        details: { runsToday: runs.map((d) => d.toISOString()), nextAllowedAt: earliestSecond.toISOString() },
+        details,
       };
     }
   }
 
-  return { allowed: true, statusCode: 200, error: null, details: { runsToday: runs.map((d) => d.toISOString()) } };
+  return { allowed: true, statusCode: 200, error: null, details };
 }
 
+export async function getScrapeStatus(options = {}) {
+  const result = await checkScrapeAllowance(options);
+  return {
+    allowed: result.allowed,
+    error: result.error,
+    ...result.details,
+  };
+}

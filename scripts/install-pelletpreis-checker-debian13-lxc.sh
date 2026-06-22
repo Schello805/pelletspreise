@@ -38,6 +38,10 @@ PLAYWRIGHT_WITH_DEPS="${PLAYWRIGHT_WITH_DEPS:-0}"
 
 ENV_FILE="${ENV_FILE:-/etc/${APP_NAME}.env}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
+UPDATE_SERVICE_FILE="/etc/systemd/system/${APP_NAME}-update.service"
+UPDATE_PATH_FILE="/etc/systemd/system/${APP_NAME}-update.path"
+UPDATE_DIR="/var/lib/${APP_NAME}"
+UPDATE_REQUEST_FILE="${UPDATE_DIR}/update.request"
 NODE_BIN="${NODE_BIN:-}"
 LXC_COMPAT="${LXC_COMPAT:-1}"
 
@@ -228,14 +232,71 @@ install_deps() {
 
 write_env_file() {
   compute_base_url
-  log "Writing env file: $ENV_FILE"
+  log "Ensuring env file: $ENV_FILE"
   umask 077
-  cat >"$ENV_FILE" <<EOF
+  if [[ ! -f "$ENV_FILE" ]]; then
+    cat >"$ENV_FILE" <<EOF
 # ${APP_NAME} runtime config
 HOST=${HOST}
 PORT=${PORT}
 BASE_URL=${BASE_URL}
 CONTACT_EMAIL=${CONTACT_EMAIL}
+# Optional hardening: set APP_PASSWORD and optionally APP_USERNAME=admin.
+# Optional browser update trigger: set ALLOW_FRONTEND_UPDATE=1 after this installer has run.
+ALLOW_FRONTEND_UPDATE=0
+UPDATE_REQUEST_FILE=${UPDATE_REQUEST_FILE}
+EOF
+    return
+  fi
+
+  set_env_value "HOST" "$HOST"
+  set_env_value "PORT" "$PORT"
+  set_env_value "BASE_URL" "$BASE_URL"
+  set_env_value "CONTACT_EMAIL" "$CONTACT_EMAIL"
+  set_env_value "UPDATE_REQUEST_FILE" "$UPDATE_REQUEST_FILE"
+}
+
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  if grep -qE "^${key}=" "$ENV_FILE"; then
+    sed -i "s#^${key}=.*#${key}=${value}#" "$ENV_FILE"
+  else
+    printf '\n%s=%s\n' "$key" "$value" >>"$ENV_FILE"
+  fi
+}
+
+write_frontend_update_trigger() {
+  log "Writing optional frontend update trigger…"
+  mkdir -p "$UPDATE_DIR"
+  chown "$APP_USER:$APP_GROUP" "$UPDATE_DIR"
+  chmod 0750 "$UPDATE_DIR"
+
+  cat >"$UPDATE_SERVICE_FILE" <<EOF
+[Unit]
+Description=Pelletpreis-Checker update requested from web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStartPre=/usr/bin/rm -f ${UPDATE_REQUEST_FILE}
+ExecStart=/bin/bash ${APP_DIR}/scripts/update-pelletpreis-checker-debian13-lxc.sh
+StandardOutput=journal
+StandardError=journal
+EOF
+
+  cat >"$UPDATE_PATH_FILE" <<EOF
+[Unit]
+Description=Watch for Pelletpreis-Checker frontend update requests
+
+[Path]
+PathExists=${UPDATE_REQUEST_FILE}
+Unit=${APP_NAME}-update.service
+
+[Install]
+WantedBy=multi-user.target
 EOF
 }
 
@@ -267,16 +328,25 @@ WantedBy=multi-user.target
 EOF
 
   write_lxc_compat_override
+  write_frontend_update_trigger
   systemctl daemon-reload
   systemctl enable --now "${APP_NAME}.service"
+  systemctl enable --now "${APP_NAME}-update.path"
 }
 
 health_check() {
   compute_base_url
   log "Waiting for service…"
   sleep 1
-  if curl -sS -m 3 "${BASE_URL}/api/health" >/dev/null; then
-    log "OK: ${BASE_URL}/pelletpreise/"
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  local url="http://127.0.0.1:${PORT:-8000}"
+  local -a curl_auth=()
+  if [[ -n "${APP_PASSWORD:-}" ]]; then
+    curl_auth=(-u "${APP_USERNAME:-admin}:${APP_PASSWORD}")
+  fi
+  if curl -sS -m 3 "${curl_auth[@]}" "${url}/api/health" >/dev/null; then
+    log "OK: ${url}/pelletpreise/"
   else
     log "Service started, but health check failed. Check logs:"
     log "  journalctl -u ${APP_NAME}.service -n 200 --no-pager"

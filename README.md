@@ -38,13 +38,18 @@ Optional (für Playwright-Quellen wie „HeizPellets24 Angebotsliste“):
 - Ergebnisse: Deutschland-Ø getrennt von bestellbaren Angeboten
 - Historie: Raw + Tageswerte inkl. Chart & Analyse
 - Export: CSV/JSON (raw oder daily)
-- Alarme: E-Mail bei Schwellwert (€/t)
+- Alarme: E-Mail bei Schwellwert (€/t), mit Wiederaktivierung nach Preis-Erholung
+- Abrufstatus: Cache-Alter, Tageslimit und nächstmögliche echte Abfrage
+- Datenqualität: Warnung bei starken Abweichungen vom historischen Median
+- System-Tab: Diagnose für Quellen, Speicher, E-Mail, Playwright, Schutz und Updates
 
 ## Alarme (E-Mail)
 
 Im Tab „Alarme“ kannst du Regeln anlegen wie: „Wenn Quelle X ≤ 360 €/t → E-Mail schicken“.
 
 Wichtig: Alarme werden nur ausgewertet, wenn ein Wert in die Historie geschrieben wird (z. B. durch „Auto 1×/Tag“).
+
+Standardmäßig löst ein Alarm beim Unterschreiten nur einmal aus. Erst wenn der Preis den Wert „Erneut aktiv ab“ überschreitet und danach wieder fällt, folgt eine neue Mail. Die optionale Wiederholung bei dauerhaft niedrigem Preis berücksichtigt den eingestellten Mindestabstand.
 
 ### SMTP konfigurieren (Debian/LXC)
 
@@ -92,6 +97,33 @@ Optional (SQLite statt JSON-Dateien, empfohlen bei viel Historie):
 Wenn dein Install ohne `.git` gemacht wurde (Copy-Install), gib beim Update die Repo-URL an:
 
 - `sudo REPO_URL="https://github.com/<you>/<repo>.git" bash scripts/update-pelletpreis-checker-debian13-lxc.sh`
+
+### Update direkt im Frontend
+
+Das Install- und Update-Script installiert einen systemd-Trigger für sichere Update-Anforderungen aus dem System-Tab. Wegen der privilegierten Ausführung benötigt diese Funktion zwingend Passwortschutz und folgende Werte in `/etc/pelletpreis-checker.env`:
+
+- `APP_PASSWORD=<ein-langes-zufälliges-passwort>`
+- `ALLOW_FRONTEND_UPDATE=1`
+
+Danach einmal ausführen und den Dienst neu starten:
+
+- `sudo bash /opt/pelletpreis-checker/scripts/update-pelletpreis-checker-debian13-lxc.sh`
+- `sudo systemctl restart pelletpreis-checker.service`
+
+Bei einer verfügbaren GitHub-Version erscheint im Tab „System“ der Button „Update installieren“. Das Update läuft als root-gesteuerter systemd-Job; die Webapp ist dabei kurz nicht erreichbar und startet anschließend automatisch wieder.
+
+## Zugriffsschutz (empfohlen bei LAN-Betrieb)
+
+Optional schützt HTTP Basic Auth die gesamte Webapp inklusive API. In `/etc/pelletpreis-checker.env` setzen:
+
+- `APP_USERNAME=admin`
+- `APP_PASSWORD=<ein-langes-zufälliges-passwort>`
+
+Danach:
+
+- `sudo systemctl restart pelletpreis-checker.service`
+
+Der Browser fragt beim nächsten Aufruf nach Benutzername und Passwort. Ohne `APP_PASSWORD` bleibt die App wie bisher im LAN offen.
 
 ## Lizenz
 

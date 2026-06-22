@@ -1,14 +1,14 @@
 {
   "name": "signatur-generator",
   "private": true,
-  "version": "1.1.39",
-  "description": "Lokale Webapp zum Erstellen von E-Mail-Signaturen",
+  "version": "0.2.0",
+  "description": "Lokale Webapp zum Abrufen, Vergleichen und Überwachen von Pelletpreisen",
   "type": "module",
   "scripts": {
     "verify": "node --check pelletpreise/app.js && node --check pelletpreise/src/*.js && node --check server/server.js && node --check server/lib/*.js && node --check server/scrape/runner.js"
   },
   "dependencies": {
-    "nodemailer": "^6.10.0"
+    "nodemailer": "^9.0.1"
   },
   "devDependencies": {
     "playwright": "^1.59.1"

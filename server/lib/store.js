@@ -50,6 +50,8 @@ export async function ensureDataFiles({ projectRoot }) {
           ...def,
           enabled: cur.enabled ?? def.enabled,
           lastRunAt: cur.lastRunAt ?? def.lastRunAt ?? null,
+          lastSuccessAt: cur.lastSuccessAt ?? def.lastSuccessAt ?? null,
+          lastError: cur.lastError ?? def.lastError ?? null,
           historyMode: cur.historyMode ?? def.historyMode ?? null,
           cacheHours: cur.cacheHours ?? def.cacheHours ?? null,
         });

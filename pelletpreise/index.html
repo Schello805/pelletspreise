@@ -26,6 +26,7 @@
 	            <button class="nav-link tab" type="button" data-tab="sources">Quellen</button>
 	            <button class="nav-link tab" type="button" data-tab="alarms">Alarme</button>
 	            <button class="nav-link tab" type="button" data-tab="history">Historie</button>
+	            <button class="nav-link tab" type="button" data-tab="system">System</button>
 	          </div>
 	          <div class="d-flex">
 	            <span class="badge text-bg-secondary border border-secondary-subtle" id="serverStatus" aria-live="polite">Server: …</span>
@@ -145,6 +146,10 @@
               </details>
             </div>
           </form>
+
+          <div class="px-3 pb-3">
+            <div class="run-status" id="scrapeStatus" aria-live="polite">Abrufstatus wird geladen …</div>
+          </div>
         </div>
 
         <div class="card bg-transparent border-secondary-subtle">
@@ -416,10 +421,24 @@
 	                  <span class="help">Verhindert E-Mail-Spam, falls der Preis dauerhaft niedrig ist.</span>
 	                </label>
 
+	                <label class="field">
+	                  <span class="label">Erneut aktiv ab (€/t)</span>
+	                  <input id="alert_rearmAbove" type="number" min="1" step="0.01" placeholder="z. B. 362" />
+	                  <span class="help">Nach einem Anstieg über diesen Wert kann ein neuer Preisfall erneut auslösen.</span>
+	                </label>
+
 	                <label class="field" style="grid-column: span 12;">
 	                  <span class="label">Name (optional)</span>
 	                  <input id="alert_name" placeholder="z. B. ‚Sommerdeal‘" />
 	                  <span class="help">Nur zur besseren Übersicht.</span>
+	                </label>
+
+	                <label class="field" style="grid-column: span 12;">
+	                  <div class="only-orderable-inner">
+	                    <input id="alert_repeatWhileBelow" type="checkbox" />
+	                    <span class="label" style="margin:0;">bei dauerhaft niedrigem Preis wiederholen</span>
+	                  </div>
+	                  <span class="help">Optional. Andernfalls wird erst nach einem Preis-Anstieg und erneutem Unterschreiten wieder alarmiert.</span>
 	                </label>
 
 	                <label class="field" style="grid-column: span 12;">
@@ -484,6 +503,23 @@
 	                <option value="730">2 Jahre</option>
 	              </select>
 	              <span class="help">Nur Tageswerte innerhalb des Zeitraums.</span>
+	            </label>
+
+	            <label class="field">
+	              <span class="label">PLZ filtern</span>
+	              <input id="historyPostalCode" inputmode="numeric" maxlength="5" placeholder="alle PLZ" />
+	              <span class="help">Optional: nur Werte dieser PLZ.</span>
+	            </label>
+
+	            <label class="field">
+	              <span class="label">Produkt filtern</span>
+	              <select id="historyProduct">
+	                <option value="">alle Produkte</option>
+	                <option value="ENPLUS_A1_LOSE">ENplus A1 (lose)</option>
+	                <option value="ENPLUS_A1_SACK">ENplus A1 (Sackware)</option>
+	                <option value="DINPLUS_LOSE">DINplus (lose)</option>
+	              </select>
+	              <span class="help">Optional: nur Werte dieses Produkts.</span>
 	            </label>
 
 	            <label class="field">
@@ -560,6 +596,10 @@
 	            </div>
 	          </div>
 
+	          <div class="px-3 pb-3">
+	            <a class="btn btn-outline-light btn-sm" id="exportSelectedDailyCsv" href="#" download>Ausgewählte Serie als CSV</a>
+	          </div>
+
 	          <div class="table-wrap px-3 pb-3" style="margin-top: 12px;">
 	            <div class="section-title">Details (ausgewählte Serie)</div>
 		            <table class="table table-sm table-hover align-middle" aria-label="Tageswerte Details">
@@ -618,6 +658,24 @@
           </div>
         </div>
       </section>
+
+	      <section class="panel" id="tab-system" role="tabpanel">
+	        <div class="card bg-transparent border-secondary-subtle">
+	          <div class="card-header header-row">
+	            <div>
+	              <h1 class="card-title">System & Diagnose</h1>
+	              <p class="card-subtitle">Status von Abruf, Speicher, E-Mail, Playwright, Sicherheit und Updates.</p>
+	            </div>
+	            <div class="right actions-inline">
+	              <button class="btn btn-outline-light btn-sm" type="button" id="refreshSystemBtn">Aktualisieren</button>
+	              <button class="btn btn-primary btn-sm" type="button" id="runFrontendUpdateBtn" hidden>Update installieren</button>
+	            </div>
+	          </div>
+	          <div class="system-grid" id="systemSummary">
+	            <div class="overview-card muted">Lade Diagnose …</div>
+	          </div>
+	        </div>
+	      </section>
     </main>
 
 	    <footer class="footer container">

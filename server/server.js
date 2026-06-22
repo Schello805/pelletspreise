@@ -6,10 +6,11 @@ import { fileURLToPath } from "node:url";
 import { appendHistory, clearHistory, readHistory, readHistoryAll, readSources, resetSourcesToDefaults, writeSources } from "./lib/store.js";
 import { getCachedResult, pruneCache, setCachedResult } from "./lib/cache.js";
 import { dailyRowsToCsv, getDailyHistory, rawItemsToCsv } from "./lib/history.js";
-import { checkScrapeAllowance, readRunsToday, recordRun } from "./lib/rateLimit.js";
+import { checkScrapeAllowance, getScrapeStatus, readRunsToday, recordRun } from "./lib/rateLimit.js";
 import { berlinDateKey, berlinHour, patchSettings, readSettings, writeSettings } from "./lib/settings.js";
 import { evaluateAlerts, patchAlerts, readAlerts, writeAlerts } from "./lib/alerts.js";
 import { getEmailConfig, sendAlertEmail } from "./lib/email.js";
+import { annotatePriceAnomalies } from "./lib/anomaly.js";
 import { jsonResponse, newId, normalizeQuery, readJsonBody, textResponse } from "./lib/util.js";
 import { runSource } from "./scrape/runner.js";
 
@@ -21,8 +22,13 @@ const projectRoot = path.resolve(__dirname, "..");
 const PORT = Number(process.env.PORT || 8000);
 const HOST = String(process.env.HOST || "127.0.0.1");
 const BASE_URL = String(process.env.BASE_URL || `http://${HOST}:${PORT}`);
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "0.2.0";
 const GITHUB_REPO = "Schello805/pelletspreise";
+const APP_USERNAME = String(process.env.APP_USERNAME || "admin");
+const APP_PASSWORD = String(process.env.APP_PASSWORD || "");
+const ALLOW_FRONTEND_UPDATE = ["1", "true", "yes", "on"].includes(String(process.env.ALLOW_FRONTEND_UPDATE || "").toLowerCase());
+const UPDATE_REQUEST_FILE = String(process.env.UPDATE_REQUEST_FILE || "/var/lib/pelletpreis-checker/update.request");
+const UPDATE_PATH_UNIT_FILE = "/etc/systemd/system/pelletpreis-checker-update.path";
 
 let remoteUpdateCache = { checkedAtMs: 0, ok: false, sha: null, date: null, error: null };
 let dailyHistoryCache = new Map(); // key -> { atMs, sig, rows }
@@ -187,17 +193,23 @@ async function scrapeRunInternal({ query, onlyDemo = false, persistCached = fals
     }
   }
 
+  const enrichedResults = await annotatePriceAnomalies({ projectRoot, results }).catch(() => results);
   const now = new Date().toISOString();
   const updatedSources = sources.map((s) => {
     if (!selected.some((sel) => sel.id === s.id)) return s;
-    return { ...s, lastRunAt: now };
+    const result = enrichedResults.find((r) => String(r?.sourceId || "") === String(s.id));
+    return {
+      ...s,
+      lastRunAt: now,
+      ...(result?.ok ? { lastSuccessAt: now, lastError: null } : { lastError: String(result?.error || "Unbekannter Abruffehler").slice(0, 500) }),
+    };
   });
   await writeSources({ projectRoot, sources: updatedSources });
 
   const historyModeById = new Map(updatedSources.map((s) => [String(s?.id || ""), normalizeHistoryMode(s?.historyMode)]));
 
   const persistedItems = [];
-  for (const r of results) {
+  for (const r of enrichedResults) {
     // Only persist non-cached runs (so daily caching keeps history clean).
     if (!persistCached && r && r.cached) continue;
     const sourceId = String(r?.sourceId || "");
@@ -254,14 +266,14 @@ async function scrapeRunInternal({ query, onlyDemo = false, persistCached = fals
     }
   }
 
-  const sorted = results.slice().sort((a, b) => {
+  const sorted = enrichedResults.slice().sort((a, b) => {
     if (a.ok && b.ok) return (a.priceEurPerTon ?? Infinity) - (b.priceEurPerTon ?? Infinity);
     if (a.ok) return -1;
     if (b.ok) return 1;
     return 0;
   });
 
-  return { ok: true, query, results: sorted, meta: { needsFreshRun } };
+  return { ok: true, query, results: sorted, meta: { needsFreshRun, rateLimited: Boolean(rateLimitInfo), rateLimit: rateLimitInfo } };
 }
 
 async function tryAutoDailyScrape({ force = false } = {}) {
@@ -413,6 +425,30 @@ function contentTypeFor(filePath) {
   );
 }
 
+function requestHasValidCredentials(req) {
+  if (!APP_PASSWORD) return true;
+  const header = String(req.headers.authorization || "");
+  if (!header.startsWith("Basic ")) return false;
+  try {
+    const decoded = Buffer.from(header.slice("Basic ".length), "base64").toString("utf8");
+    const separator = decoded.indexOf(":");
+    if (separator < 0) return false;
+    const username = decoded.slice(0, separator);
+    const password = decoded.slice(separator + 1);
+    return username === APP_USERNAME && password === APP_PASSWORD;
+  } catch {
+    return false;
+  }
+}
+
+function requestAuthentication(res) {
+  res.writeHead(401, {
+    "www-authenticate": 'Basic realm="Pelletpreis-Checker", charset="UTF-8"',
+    "cache-control": "no-store",
+  });
+  res.end("Authentifizierung erforderlich");
+}
+
 function withLimit(limit, tasks) {
   return new Promise((resolve) => {
     const results = new Array(tasks.length);
@@ -459,6 +495,19 @@ function demoHtml({ query }) {
 </html>`;
 }
 
+function getHistoryFilters(searchParams) {
+  const postalCode = String(searchParams.get("postalCode") || "").trim();
+  const product = String(searchParams.get("product") || "").trim();
+  const sourceId = String(searchParams.get("sourceId") || "").trim();
+  const dealerName = String(searchParams.get("dealerName") || "").trim();
+  return {
+    ...(postalCode ? { postalCode } : {}),
+    ...(product ? { product } : {}),
+    ...(sourceId ? { sourceId } : {}),
+    ...(dealerName ? { dealerName } : {}),
+  };
+}
+
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/health") {
     return jsonResponse(res, 200, { ok: true, version: APP_VERSION, baseUrl: BASE_URL });
@@ -476,7 +525,67 @@ async function handleApi(req, res, url) {
       "  chmod +x update-pelletpreis-checker-debian13-lxc.sh",
       "  ./update-pelletpreis-checker-debian13-lxc.sh",
     ].join("\n");
-    return jsonResponse(res, 200, { ok: true, current: local, latest, updateAvailable, updateHint: hint, remoteOk: remote.ok, remoteError: remote.error });
+    const updateRequested = await fs
+      .access(UPDATE_REQUEST_FILE)
+      .then(() => true)
+      .catch(() => false);
+    const frontendUpdateInstalled = await fs
+      .access(UPDATE_PATH_UNIT_FILE)
+      .then(() => true)
+      .catch(() => false);
+    return jsonResponse(res, 200, {
+      ok: true,
+      current: local,
+      latest,
+      updateAvailable,
+      updateHint: hint,
+      remoteOk: remote.ok,
+      remoteError: remote.error,
+      frontendUpdateEnabled: ALLOW_FRONTEND_UPDATE,
+      frontendUpdateInstalled,
+      frontendUpdateReady: Boolean(APP_PASSWORD && ALLOW_FRONTEND_UPDATE && frontendUpdateInstalled),
+      updateRequested,
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/update/run") {
+    const frontendUpdateInstalled = await fs
+      .access(UPDATE_PATH_UNIT_FILE)
+      .then(() => true)
+      .catch(() => false);
+    if (!APP_PASSWORD || !ALLOW_FRONTEND_UPDATE || !frontendUpdateInstalled) {
+      return jsonResponse(res, 403, {
+        error: "Frontend-Update ist nicht bereit. Aktiviere APP_PASSWORD und ALLOW_FRONTEND_UPDATE=1 und führe einmal das aktuelle Install- oder Update-Script aus.",
+      });
+    }
+    await fs.mkdir(path.dirname(UPDATE_REQUEST_FILE), { recursive: true });
+    await fs.writeFile(UPDATE_REQUEST_FILE, JSON.stringify({ requestedAt: new Date().toISOString(), requestedFrom: req.socket.remoteAddress || null }), "utf8");
+    return jsonResponse(res, 202, { ok: true, message: "Update angefordert. Die Webapp startet in Kürze neu." });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/scrape/status") {
+    const settings = await readSettings({ projectRoot });
+    const query = normalizeQuery(settings.lastQuery || {});
+    const sources = await readSources({ projectRoot });
+    const enabled = sources.filter((source) => source.enabled);
+    const cache = await withLimit(
+      6,
+      enabled.map((source) => async () => {
+        const result = await getCachedResult({ projectRoot, sourceId: source.id, query, cacheHours: source.cacheHours ?? null });
+        const cachedAt = result?.retrievedAt || null;
+        return {
+          sourceId: source.id,
+          sourceName: source.name,
+          cached: Boolean(result),
+          cachedAt,
+          cacheHours: source.cacheHours ?? null,
+          status: result ? "cached" : "needs_refresh",
+          lastError: source.lastError || null,
+        };
+      }),
+    );
+    const rateLimit = await getScrapeStatus({ projectRoot });
+    return jsonResponse(res, 200, { ok: true, query, rateLimit, sources: cache });
   }
 
   if (req.method === "GET" && url.pathname === "/api/diagnostics") {
@@ -487,6 +596,14 @@ async function handleApi(req, res, url) {
       baseUrl: BASE_URL,
       dataDir,
       playwright: { moduleOk: false, chromiumOk: false, chromiumPath: null, error: null },
+      security: { passwordProtection: Boolean(APP_PASSWORD), username: APP_PASSWORD ? APP_USERNAME : null },
+      updates: {
+        frontendUpdateEnabled: ALLOW_FRONTEND_UPDATE,
+        frontendUpdateInstalled: await fs
+          .access(UPDATE_PATH_UNIT_FILE)
+          .then(() => true)
+          .catch(() => false),
+      },
     };
     try {
       const st = await fs.stat(dataDir);
@@ -529,6 +646,29 @@ async function handleApi(req, res, url) {
       diag.settings = settings;
     } catch {
       diag.settings = null;
+    }
+
+    try {
+      const [sources, rateLimit, email] = await Promise.all([readSources({ projectRoot }), getScrapeStatus({ projectRoot }), Promise.resolve(getEmailConfig())]);
+      diag.rateLimit = rateLimit;
+      diag.email = { configured: Boolean(email.ok), to: email.to || null };
+      diag.sources = {
+        enabled: sources.filter((s) => s.enabled).length,
+        failed: sources.filter((s) => s.enabled && s.lastError).map((s) => ({ id: s.id, name: s.name, error: s.lastError, lastRunAt: s.lastRunAt || null })),
+      };
+      const entries = await Promise.all(
+        ["history.jsonl", "cache.json", "alerts.json", "settings.json", "scrape-runs.json"].map(async (name) => {
+          try {
+            const stat = await fs.stat(path.join(dataDir, name));
+            return { name, bytes: stat.size, exists: true };
+          } catch {
+            return { name, bytes: 0, exists: false };
+          }
+        }),
+      );
+      diag.storage = entries;
+    } catch {
+      // Diagnostics should remain available even when optional parts fail.
     }
 
     return jsonResponse(res, 200, diag);
@@ -823,7 +963,7 @@ async function handleApi(req, res, url) {
 
     try {
       const data = await scrapeRunInternal({ query, onlyDemo });
-      return jsonResponse(res, 200, { ok: true, query: data.query, results: data.results });
+      return jsonResponse(res, 200, { ok: true, query: data.query, results: data.results, meta: data.meta || {} });
     } catch (err) {
       const status = err?.statusCode || err?.status || 500;
       const details = err?.details && typeof err.details === "object" ? err.details : {};
@@ -841,6 +981,7 @@ async function handleApi(req, res, url) {
     const days = Math.max(1, Math.min(3650, Number(url.searchParams.get("days") || 365)));
     const groupBy = String(url.searchParams.get("groupBy") || "source");
     const onlyOrderable = url.searchParams.get("onlyOrderable") === "1" || url.searchParams.get("onlyOrderable") === "true";
+    const filters = getHistoryFilters(url.searchParams);
     const gb = groupBy === "dealer" ? "dealer" : "source";
     let sig = "no-file";
     try {
@@ -850,18 +991,18 @@ async function handleApi(req, res, url) {
     } catch {
       // ignore
     }
-    const cacheKey = `${days}|${gb}|${onlyOrderable ? 1 : 0}`;
+    const cacheKey = `${days}|${gb}|${onlyOrderable ? 1 : 0}|${JSON.stringify(filters)}`;
     const now = Date.now();
     const cached = dailyHistoryCache.get(cacheKey);
     if (cached && cached.sig === sig && now - cached.atMs < 30_000) {
-      return jsonResponse(res, 200, { ok: true, days, groupBy: gb, onlyOrderable, rows: cached.rows });
+      return jsonResponse(res, 200, { ok: true, days, groupBy: gb, onlyOrderable, filters, rows: cached.rows });
     }
 
-    const rows = await getDailyHistory({ projectRoot, days, groupBy: gb, onlyOrderable });
+    const rows = await getDailyHistory({ projectRoot, days, groupBy: gb, onlyOrderable, filters });
     dailyHistoryCache.set(cacheKey, { atMs: now, sig, rows });
     // small cap
     if (dailyHistoryCache.size > 16) dailyHistoryCache = new Map(Array.from(dailyHistoryCache.entries()).slice(-16));
-    return jsonResponse(res, 200, { ok: true, days, groupBy: gb, onlyOrderable, rows });
+    return jsonResponse(res, 200, { ok: true, days, groupBy: gb, onlyOrderable, filters, rows });
   }
 
   if (req.method === "GET" && url.pathname === "/api/history/export.json") {
@@ -879,7 +1020,8 @@ async function handleApi(req, res, url) {
     const days = Math.max(1, Math.min(3650, Number(url.searchParams.get("days") || 365)));
     const groupBy = String(url.searchParams.get("groupBy") || "source");
     const onlyOrderable = url.searchParams.get("onlyOrderable") === "1" || url.searchParams.get("onlyOrderable") === "true";
-    const rows = await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable });
+    const filters = getHistoryFilters(url.searchParams);
+    const rows = await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable, filters });
     res.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
       "content-disposition": `attachment; filename="pelletpreise-history-daily.json"`,
@@ -904,7 +1046,8 @@ async function handleApi(req, res, url) {
     const days = Math.max(1, Math.min(3650, Number(url.searchParams.get("days") || 365)));
     const groupBy = String(url.searchParams.get("groupBy") || "source");
     const onlyOrderable = url.searchParams.get("onlyOrderable") === "1" || url.searchParams.get("onlyOrderable") === "true";
-    const rows = await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable });
+    const filters = getHistoryFilters(url.searchParams);
+    const rows = await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable, filters });
     const csv = dailyRowsToCsv(rows);
     res.writeHead(200, {
       "content-type": "text/csv; charset=utf-8",
@@ -925,6 +1068,7 @@ async function handleApi(req, res, url) {
 async function handle(req, res) {
   const url = new URL(req.url, BASE_URL);
   try {
+    if (!requestHasValidCredentials(req)) return requestAuthentication(res);
     if (url.pathname === "/" || url.pathname === "/pelletpreise") {
       res.writeHead(302, { location: "/pelletpreise/" });
       return res.end();

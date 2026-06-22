@@ -92,7 +92,7 @@ function pickBestOffer(current, next) {
   return np < cp ? next : current;
 }
 
-export async function getDailyHistory({ projectRoot, days = 365, groupBy = "source", onlyOrderable = false } = {}) {
+export async function getDailyHistory({ projectRoot, days = 365, groupBy = "source", onlyOrderable = false, filters = {} } = {}) {
   const maxLines = 80_000;
   const items = await readHistoryAll({ projectRoot, maxLines });
 
@@ -106,6 +106,10 @@ export async function getDailyHistory({ projectRoot, days = 365, groupBy = "sour
       if (!obs.date) continue;
       if (cutoffKey && obs.date < cutoffKey) continue;
       if (onlyOrderable && !(obs.orderUrl && /^https?:\/\//i.test(String(obs.orderUrl)))) continue;
+      if (filters.sourceId && String(obs.sourceId || "") !== String(filters.sourceId)) continue;
+      if (filters.dealerName && String(obs.dealerName || "") !== String(filters.dealerName)) continue;
+      if (filters.postalCode && String(obs.query?.postalCode || "") !== String(filters.postalCode)) continue;
+      if (filters.product && String(obs.query?.product || "") !== String(filters.product)) continue;
 
       const dealerPart = groupBy === "dealer" ? `|${obs.dealerName || "—"}` : "";
       const key = `${obs.date}|${obs.sourceId}${dealerPart}`;
@@ -226,4 +230,3 @@ export function rawItemsToCsv(items) {
   }
   return `${lines.join("\n")}\n`;
 }
-

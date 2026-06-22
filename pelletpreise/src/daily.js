@@ -237,21 +237,25 @@ export function getDailyControls({ $ }) {
   const onlyOrderable = Boolean($("dailyOnlyOrderable").checked);
   const metric = String($("dailyMetric").value || "priceEurPerTon");
   const search = String($("dailySeriesSearch").value || "").trim().toLowerCase();
+  const postalCode = String($("historyPostalCode")?.value || "").trim();
+  const product = String($("historyProduct")?.value || "").trim();
   const compareMode = Boolean($("dailyCompareMode")?.checked);
   const compareMax = Math.max(1, Math.min(5, Number($("dailyCompareMax")?.value || 3)));
   const compareKeys = compareMode
     ? Array.from(document.querySelectorAll("#dailyCompareSeries input[type=checkbox]:checked")).map((el) => String(el.value))
     : [];
-  return { days, groupBy, onlyOrderable, metric, search, compareMode, compareMax, compareKeys };
+  return { days, groupBy, onlyOrderable, metric, search, postalCode, product, compareMode, compareMax, compareKeys };
 }
 
 export function updateHistoryExportLinks({ $, state }) {
-  const { days, groupBy, onlyOrderable } = getDailyControls({ $ });
+  const { days, groupBy, onlyOrderable, postalCode, product } = getDailyControls({ $ });
   const dailyParams = new URLSearchParams();
   dailyParams.set("mode", "daily");
   dailyParams.set("days", String(days));
   dailyParams.set("groupBy", groupBy === "dealer" ? "dealer" : "source");
   if (onlyOrderable) dailyParams.set("onlyOrderable", "1");
+  if (postalCode) dailyParams.set("postalCode", postalCode);
+  if (product) dailyParams.set("product", product);
 
   $("exportDailyCsv").href = `/api/history/export.csv?${dailyParams.toString()}`;
   $("exportDailyJson").href = `/api/history/export.json?${dailyParams.toString()}`;
@@ -259,12 +263,14 @@ export function updateHistoryExportLinks({ $, state }) {
 }
 
 export async function refreshDailyHistory({ apiFetch, $, state, toast, renderDailyHistory }) {
-  const { days, groupBy, onlyOrderable } = getDailyControls({ $ });
+  const { days, groupBy, onlyOrderable, postalCode, product } = getDailyControls({ $ });
   updateHistoryExportLinks({ $, state });
   const params = new URLSearchParams();
   params.set("days", String(days));
   params.set("groupBy", groupBy === "dealer" ? "dealer" : "source");
   if (onlyOrderable) params.set("onlyOrderable", "1");
+  if (postalCode) params.set("postalCode", postalCode);
+  if (product) params.set("product", product);
 
   try {
     const data = await apiFetch(`/api/history/daily?${params.toString()}`);
@@ -373,10 +379,23 @@ export function renderDailyHistory({
       statsEl.innerHTML = "—";
     } else {
       const nf = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
+      const ordered = selected.items
+        .filter((row) => Number.isFinite(Number(row[metric])))
+        .slice()
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const latest = ordered.at(-1);
+      const previous = ordered.at(-2);
+      const weekAgo = ordered.length > 7 ? ordered.at(-8) : null;
+      const latestValue = Number(latest?.[metric]);
+      const deltaPrevious = previous ? latestValue - Number(previous[metric]) : null;
+      const deltaWeek = weekAgo ? latestValue - Number(weekAgo[metric]) : null;
+      const isNewLow = Number.isFinite(latestValue) && latestValue <= st.min;
+      const fmtDelta = (value) => (Number.isFinite(value) ? `${value > 0 ? "+" : ""}${nf.format(value)} ${unitLabel}` : "—");
       statsEl.innerHTML = `Punkte: <strong>${st.count}</strong><br/>
 Min: <strong>${nf.format(st.min)} ${unitLabel}</strong> · Median: <strong>${nf.format(st.median)} ${unitLabel}</strong><br/>
 Ø: <strong>${nf.format(st.avg)} ${unitLabel}</strong> · Max: <strong>${nf.format(st.max)} ${unitLabel}</strong><br/>
-P10–P90: <strong>${nf.format(st.p10)}–${nf.format(st.p90)} ${unitLabel}</strong>`;
+P10–P90: <strong>${nf.format(st.p10)}–${nf.format(st.p90)} ${unitLabel}</strong><br/>
+Änderung: <strong>${fmtDelta(deltaPrevious)}</strong> zum letzten Wert · <strong>${fmtDelta(deltaWeek)}</strong> gegenüber vor 7 Messpunkten${isNewLow ? "<br/><strong>Neuer Tiefstwert im Zeitraum.</strong>" : ""}`;
     }
   } else {
     const nf = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
@@ -416,6 +435,16 @@ Händler: ${escapeHtml(last.dealerName || "—")}`;
   } else lastEl.textContent = "—";
 
   const rows = selected.items.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+  const selectedExport = document.getElementById("exportSelectedDailyCsv");
+  if (selectedExport) {
+    const sample = selected.items[0] || {};
+    const p = new URLSearchParams(state._dailyExportParams || "mode=daily");
+    p.set("sourceId", String(sample.sourceId || ""));
+    if (groupBy === "dealer" && sample.dealerName) p.set("dealerName", String(sample.dealerName));
+    selectedExport.href = `/api/history/export.csv?${p.toString()}`;
+    selectedExport.title = `CSV für ${selected.label}`;
+  }
   dailyBody.innerHTML = rows
     .slice(0, 180)
     .map((r) => {
