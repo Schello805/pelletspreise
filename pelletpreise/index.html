@@ -28,8 +28,9 @@
 	            <button class="nav-link tab" type="button" data-tab="history">Historie</button>
 	            <button class="nav-link tab" type="button" data-tab="system">System</button>
 	          </div>
-	          <div class="d-flex">
+	          <div class="d-flex gap-2 align-items-center">
 	            <span class="badge text-bg-secondary border border-secondary-subtle" id="serverStatus" aria-live="polite">Server: …</span>
+	            <button class="btn btn-outline-light btn-sm" id="logoutBtn" type="button" hidden>Abmelden</button>
 	          </div>
 	        </div>
 	      </div>
@@ -691,6 +692,32 @@
 	    </footer>
 
 	    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+	    <dialog id="loginDialog" class="dialog login-dialog" aria-labelledby="loginDialogTitle">
+	      <form id="loginForm" class="dialog-inner" novalidate>
+	        <div class="dialog-head">
+	          <div>
+	            <div class="dialog-title" id="loginDialogTitle">Anmeldung erforderlich</div>
+	            <div class="dialog-subtitle">Melde dich an, um Preis- und Systemdaten aufzurufen.</div>
+	          </div>
+	        </div>
+	        <div class="dialog-body">
+	          <label class="field" style="grid-column: span 12;">
+	            <span class="label">Benutzername</span>
+	            <input id="loginUsername" autocomplete="username" value="admin" required />
+	          </label>
+	          <label class="field" style="grid-column: span 12;">
+	            <span class="label">Passwort</span>
+	            <input id="loginPassword" type="password" autocomplete="current-password" required />
+	          </label>
+	          <div class="help" id="loginError" role="alert" aria-live="polite"></div>
+	        </div>
+	        <div class="dialog-foot">
+	          <span class="muted">Die Sitzung läuft nach 12 Stunden ab.</span>
+	          <button class="btn btn-primary btn-sm" type="submit" id="loginSubmitBtn">Anmelden</button>
+	        </div>
+	      </form>
+	    </dialog>
 
 	    <script type="module" src="./app.js"></script>
 	    <script

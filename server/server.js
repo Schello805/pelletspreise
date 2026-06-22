@@ -1,4 +1,5 @@
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +33,9 @@ const UPDATE_PATH_UNIT_FILE = "/etc/systemd/system/pelletpreis-checker-update.pa
 
 let remoteUpdateCache = { checkedAtMs: 0, ok: false, sha: null, date: null, error: null };
 let dailyHistoryCache = new Map(); // key -> { atMs, sig, rows }
+const authSessions = new Map();
+const AUTH_COOKIE = "pelletpreis_session";
+const AUTH_SESSION_MS = 12 * 60 * 60 * 1000;
 
 async function readLocalGitSha() {
   try {
@@ -425,28 +429,48 @@ function contentTypeFor(filePath) {
   );
 }
 
-function requestHasValidCredentials(req) {
-  if (!APP_PASSWORD) return true;
-  const header = String(req.headers.authorization || "");
-  if (!header.startsWith("Basic ")) return false;
-  try {
-    const decoded = Buffer.from(header.slice("Basic ".length), "base64").toString("utf8");
-    const separator = decoded.indexOf(":");
-    if (separator < 0) return false;
-    const username = decoded.slice(0, separator);
-    const password = decoded.slice(separator + 1);
-    return username === APP_USERNAME && password === APP_PASSWORD;
-  } catch {
-    return false;
-  }
+function readCookies(req) {
+  const raw = String(req.headers.cookie || "");
+  return raw.split(";").reduce((cookies, part) => {
+    const index = part.indexOf("=");
+    if (index < 0) return cookies;
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (key) cookies[key] = decodeURIComponent(value);
+    return cookies;
+  }, {});
 }
 
-function requestAuthentication(res) {
-  res.writeHead(401, {
-    "www-authenticate": 'Basic realm="Pelletpreis-Checker", charset="UTF-8"',
-    "cache-control": "no-store",
-  });
-  res.end("Authentifizierung erforderlich");
+function getAuthenticatedSession(req) {
+  if (!APP_PASSWORD) return true;
+  const token = readCookies(req)[AUTH_COOKIE];
+  if (!token) return false;
+  const session = authSessions.get(token);
+  if (!session || session.expiresAt <= Date.now()) {
+    authSessions.delete(token);
+    return false;
+  }
+  return session;
+}
+
+function hasValidPassword({ username, password }) {
+  const supplied = Buffer.from(String(password || ""));
+  const expected = Buffer.from(APP_PASSWORD);
+  return String(username || "") === APP_USERNAME && supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+}
+
+function makeSession(res) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  const expiresAt = Date.now() + AUTH_SESSION_MS;
+  authSessions.set(token, { username: APP_USERNAME, expiresAt });
+  res.setHeader("set-cookie", `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(AUTH_SESSION_MS / 1000)}`);
+  return { username: APP_USERNAME, expiresAt };
+}
+
+function clearSession(req, res) {
+  const token = readCookies(req)[AUTH_COOKIE];
+  if (token) authSessions.delete(token);
+  res.setHeader("set-cookie", `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 }
 
 function withLimit(limit, tasks) {
@@ -509,6 +533,31 @@ function getHistoryFilters(searchParams) {
 }
 
 async function handleApi(req, res, url) {
+  if (req.method === "GET" && url.pathname === "/api/auth/status") {
+    const session = getAuthenticatedSession(req);
+    return jsonResponse(res, 200, {
+      ok: true,
+      required: Boolean(APP_PASSWORD),
+      authenticated: Boolean(session),
+      username: typeof session === "object" ? session.username : null,
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/login") {
+    if (!APP_PASSWORD) return jsonResponse(res, 200, { ok: true, required: false, authenticated: true });
+    const body = (await readJsonBody(req)) || {};
+    if (!hasValidPassword({ username: body.username, password: body.password })) {
+      return jsonResponse(res, 401, { error: "Benutzername oder Passwort ist falsch." });
+    }
+    const session = makeSession(res);
+    return jsonResponse(res, 200, { ok: true, required: true, authenticated: true, username: session.username, expiresAt: new Date(session.expiresAt).toISOString() });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+    clearSession(req, res);
+    return jsonResponse(res, 200, { ok: true });
+  }
+
   if (req.method === "GET" && url.pathname === "/api/health") {
     return jsonResponse(res, 200, { ok: true, version: APP_VERSION, baseUrl: BASE_URL });
   }
@@ -1068,13 +1117,18 @@ async function handleApi(req, res, url) {
 async function handle(req, res) {
   const url = new URL(req.url, BASE_URL);
   try {
-    if (!requestHasValidCredentials(req)) return requestAuthentication(res);
     if (url.pathname === "/" || url.pathname === "/pelletpreise") {
       res.writeHead(302, { location: "/pelletpreise/" });
       return res.end();
     }
 
-    if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
+    if (url.pathname.startsWith("/api/")) {
+      const publicApi = new Set(["/api/health", "/api/auth/status", "/api/auth/login", "/api/auth/logout"]);
+      if (!publicApi.has(url.pathname) && !getAuthenticatedSession(req)) {
+        return jsonResponse(res, 401, { error: "Anmeldung erforderlich.", authRequired: true });
+      }
+      return await handleApi(req, res, url);
+    }
 
     if (url.pathname === "/demo/html") {
       const query = normalizeQuery({

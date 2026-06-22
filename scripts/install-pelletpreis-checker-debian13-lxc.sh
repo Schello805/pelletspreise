@@ -341,11 +341,7 @@ health_check() {
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   local url="http://127.0.0.1:${PORT:-8000}"
-  local -a curl_auth=()
-  if [[ -n "${APP_PASSWORD:-}" ]]; then
-    curl_auth=(-u "${APP_USERNAME:-admin}:${APP_PASSWORD}")
-  fi
-  if curl -sS -m 3 "${curl_auth[@]}" "${url}/api/health" >/dev/null; then
+  if curl -sS -m 3 "${url}/api/health" >/dev/null; then
     log "OK: ${url}/pelletpreise/"
   else
     log "Service started, but health check failed. Check logs:"

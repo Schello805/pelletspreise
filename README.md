@@ -119,7 +119,7 @@ Bei einer verfügbaren GitHub-Version erscheint im Tab „System“ der Button �
 
 ## Zugriffsschutz (empfohlen bei LAN-Betrieb)
 
-Optional schützt HTTP Basic Auth die gesamte Webapp inklusive API. In `/etc/pelletpreis-checker.env` setzen:
+Optional schützt eine lokale Sitzungsanmeldung die gesamte API. Die Webapp zeigt dann einen eigenen Login-Dialog an. In `/etc/pelletpreis-checker.env` setzen:
 
 - `APP_USERNAME=admin`
 - `APP_PASSWORD=<ein-langes-zufälliges-passwort>`
@@ -128,7 +128,7 @@ Danach:
 
 - `sudo systemctl restart pelletpreis-checker.service`
 
-Der Browser fragt beim nächsten Aufruf nach Benutzername und Passwort. Ohne `APP_PASSWORD` bleibt die App wie bisher im LAN offen.
+Nach dem Neustart erscheint beim Aufruf der Webapp ein Login-Dialog. Ohne `APP_PASSWORD` bleibt die App wie bisher im LAN offen.
 
 ## Lizenz
 

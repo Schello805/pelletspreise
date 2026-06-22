@@ -299,14 +299,10 @@ health_check() {
   source "$ENV_FILE"
   # Always health-check via localhost (hairpin/LAN-IP often fails inside LXC).
   local url="http://127.0.0.1:${PORT:-8000}"
-  local -a curl_auth=()
-  if [[ -n "${APP_PASSWORD:-}" ]]; then
-    curl_auth=(-u "${APP_USERNAME:-admin}:${APP_PASSWORD}")
-  fi
 
   log "Health check: ${url}/api/health"
   sleep 1
-  if curl -sS -m 4 "${curl_auth[@]}" "${url}/api/health" >/dev/null; then
+  if curl -sS -m 4 "${url}/api/health" >/dev/null; then
     log "OK: ${url}/pelletpreise/"
   else
     log "Health check failed. Logs:"

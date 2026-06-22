@@ -83,6 +83,55 @@ const state = {
   update: null,
 };
 
+let authenticatedAppInitialized = false;
+
+function showLoginDialog(message = "") {
+  const dialog = document.getElementById("loginDialog");
+  const error = document.getElementById("loginError");
+  if (!dialog) return;
+  if (error) error.textContent = message;
+  if (!dialog.open) dialog.showModal();
+  window.setTimeout(() => document.getElementById("loginUsername")?.focus(), 0);
+}
+
+function setupAuthEvents() {
+  const dialog = document.getElementById("loginDialog");
+  const form = document.getElementById("loginForm");
+  const logout = document.getElementById("logoutBtn");
+  if (dialog) dialog.addEventListener("cancel", (event) => event.preventDefault());
+
+  window.addEventListener("pelletpreis:auth-required", () => showLoginDialog("Deine Sitzung ist abgelaufen. Bitte erneut anmelden."));
+
+  if (form) {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const username = String(document.getElementById("loginUsername")?.value || "").trim();
+      const password = String(document.getElementById("loginPassword")?.value || "");
+      const error = document.getElementById("loginError");
+      const submit = document.getElementById("loginSubmitBtn");
+      if (error) error.textContent = "";
+      if (submit) submit.disabled = true;
+      try {
+        await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
+        document.getElementById("loginPassword").value = "";
+        dialog?.close();
+        await initialiseAuthenticatedApp({ showLogout: true });
+      } catch (err) {
+        if (error) error.textContent = err.message || "Anmeldung fehlgeschlagen.";
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+    });
+  }
+
+  if (logout) {
+    logout.addEventListener("click", async () => {
+      await apiFetch("/api/auth/logout", { method: "POST", body: JSON.stringify({}) }).catch(() => {});
+      window.location.reload();
+    });
+  }
+}
+
 function renderScrapeStatus(status) {
   const host = document.getElementById("scrapeStatus");
   if (!host) return;
@@ -1006,20 +1055,10 @@ function setupEvents() {
   });
 }
 
-export async function bootstrap() {
-  setupTabs();
-  setupEvents();
-
-  try {
-    const health = await apiFetch("/api/health");
-    setServerStatus(`Server: OK (${health.version})`, true);
-    setFooterVersion({ version: health.version });
-  } catch {
-    setServerStatus("Server: nicht erreichbar", false);
-    toast("Server nicht erreichbar. Starte den lokalen Server.", { kind: "error", timeoutMs: 6000 });
-    setFooterVersion({ version: "" });
-  }
-
+async function initialiseAuthenticatedApp({ showLogout = false } = {}) {
+  if (authenticatedAppInitialized) return;
+  authenticatedAppInitialized = true;
+  document.getElementById("logoutBtn").hidden = !showLogout;
   await refreshDiagnostics().catch(() => {});
 
   // Non-blocking update check (GitHub main SHA)
@@ -1061,5 +1100,33 @@ export async function bootstrap() {
     // ignore auto-run failures (user can click manually)
   } finally {
     setLoading(false);
+  }
+}
+
+export async function bootstrap() {
+  setupTabs();
+  setupEvents();
+  setupAuthEvents();
+
+  try {
+    const health = await apiFetch("/api/health");
+    setServerStatus(`Server: OK (${health.version})`, true);
+    setFooterVersion({ version: health.version });
+  } catch {
+    setServerStatus("Server: nicht erreichbar", false);
+    toast("Server nicht erreichbar. Starte den lokalen Server.", { kind: "error", timeoutMs: 6000 });
+    setFooterVersion({ version: "" });
+    return;
+  }
+
+  try {
+    const auth = await apiFetch("/api/auth/status");
+    if (auth.required && !auth.authenticated) {
+      showLoginDialog();
+      return;
+    }
+    await initialiseAuthenticatedApp({ showLogout: Boolean(auth.required) });
+  } catch (err) {
+    toast(err.message || "Anmeldestatus konnte nicht geprüft werden.", { kind: "error", timeoutMs: 6000 });
   }
 }

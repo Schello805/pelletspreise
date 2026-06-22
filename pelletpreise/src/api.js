@@ -21,8 +21,8 @@ export async function apiFetch(path, options = {}) {
     const err = new Error(msg);
     err.status = res.status;
     err.body = body;
+    if (res.status === 401 && body?.authRequired) window.dispatchEvent(new CustomEvent("pelletpreis:auth-required"));
     throw err;
   }
   return body;
 }
-
