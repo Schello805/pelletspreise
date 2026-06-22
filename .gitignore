@@ -5,7 +5,8 @@ Thumbs.db
 *.log
 
 node_modules/
+.env
+.env.local
 
 # local runtime data
 server/data/
-

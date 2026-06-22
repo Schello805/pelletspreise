@@ -82,6 +82,11 @@ Beispiel:
 
 - `sudo bash scripts/install-pelletpreis-checker-debian13-lxc.sh`
 
+Eine vollständige Vorlage für die Runtime-Konfiguration liegt als [`.env.example`](.env.example) im Repository. Für eine manuelle Konfiguration:
+
+- `sudo install -m 600 .env.example /etc/pelletpreis-checker.env`
+- Datei mit den echten SMTP-, Passwort- und LAN-Werten anpassen
+
 Optional (Playwright Browser installieren – groß):
 
 - `sudo INSTALL_PLAYWRIGHT=1 bash scripts/install-pelletpreis-checker-debian13-lxc.sh`
