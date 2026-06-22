@@ -134,7 +134,7 @@ Danach:
 
 - `sudo systemctl restart pelletpreis-checker.service`
 
-Nach dem Neustart erscheint beim Aufruf der Webapp ein Login-Dialog. Ohne `APP_PASSWORD` bleibt die App wie bisher im LAN offen.
+Nach dem Neustart erscheint beim Aufruf der Webapp ein Login-Dialog. Dort kann „Angemeldet bleiben“ gewählt werden; die sichere Sitzung bleibt dann 30 Tage gültig, sonst 12 Stunden. Das Passwort selbst wird nicht von der Webapp gespeichert – der Browser kann es bei Bedarf im integrierten Passwortmanager ablegen. Ohne `APP_PASSWORD` bleibt die App wie bisher im LAN offen.
 
 ## Lizenz
 

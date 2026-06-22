@@ -43,9 +43,9 @@ const UPDATE_PATH_UNIT_FILE = "/etc/systemd/system/pelletpreis-checker-update.pa
 
 let remoteUpdateCache = { checkedAtMs: 0, ok: false, sha: null, date: null, error: null };
 let dailyHistoryCache = new Map(); // key -> { atMs, sig, rows }
-const authSessions = new Map();
 const AUTH_COOKIE = "pelletpreis_session";
 const AUTH_SESSION_MS = 12 * 60 * 60 * 1000;
+const REMEMBERED_AUTH_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 
 async function readLocalGitSha() {
   try {
@@ -446,21 +446,29 @@ function readCookies(req) {
     if (index < 0) return cookies;
     const key = part.slice(0, index).trim();
     const value = part.slice(index + 1).trim();
-    if (key) cookies[key] = decodeURIComponent(value);
+    if (key) {
+      try {
+        cookies[key] = decodeURIComponent(value);
+      } catch {
+        // Ignore malformed cookies.
+      }
+    }
     return cookies;
   }, {});
 }
 
 function getAuthenticatedSession(req) {
   if (!APP_PASSWORD) return true;
-  const token = readCookies(req)[AUTH_COOKIE];
-  if (!token) return false;
-  const session = authSessions.get(token);
-  if (!session || session.expiresAt <= Date.now()) {
-    authSessions.delete(token);
-    return false;
-  }
-  return session;
+  const raw = readCookies(req)[AUTH_COOKIE];
+  if (!raw) return false;
+  const [token, expiresAtRaw, signature] = String(raw).split(".");
+  const expiresAt = Number(expiresAtRaw);
+  if (!token || !signature || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
+  const expected = crypto.createHmac("sha256", APP_PASSWORD).update(`${token}.${expiresAt}`).digest("base64url");
+  const provided = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (provided.length !== expectedBuffer.length || !crypto.timingSafeEqual(provided, expectedBuffer)) return false;
+  return { username: APP_USERNAME, expiresAt };
 }
 
 function hasValidPassword({ username, password }) {
@@ -469,17 +477,17 @@ function hasValidPassword({ username, password }) {
   return String(username || "") === APP_USERNAME && supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
 }
 
-function makeSession(res) {
+function makeSession(res, { remember = false } = {}) {
   const token = crypto.randomBytes(32).toString("base64url");
-  const expiresAt = Date.now() + AUTH_SESSION_MS;
-  authSessions.set(token, { username: APP_USERNAME, expiresAt });
-  res.setHeader("set-cookie", `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(AUTH_SESSION_MS / 1000)}`);
+  const durationMs = remember ? REMEMBERED_AUTH_SESSION_MS : AUTH_SESSION_MS;
+  const expiresAt = Date.now() + durationMs;
+  const signature = crypto.createHmac("sha256", APP_PASSWORD).update(`${token}.${expiresAt}`).digest("base64url");
+  const value = `${token}.${expiresAt}.${signature}`;
+  res.setHeader("set-cookie", `${AUTH_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(durationMs / 1000)}`);
   return { username: APP_USERNAME, expiresAt };
 }
 
 function clearSession(req, res) {
-  const token = readCookies(req)[AUTH_COOKIE];
-  if (token) authSessions.delete(token);
   res.setHeader("set-cookie", `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 }
 
@@ -559,7 +567,7 @@ async function handleApi(req, res, url) {
     if (!hasValidPassword({ username: body.username, password: body.password })) {
       return jsonResponse(res, 401, { error: "Benutzername oder Passwort ist falsch." });
     }
-    const session = makeSession(res);
+    const session = makeSession(res, { remember: Boolean(body.remember) });
     return jsonResponse(res, 200, { ok: true, required: true, authenticated: true, username: session.username, expiresAt: new Date(session.expiresAt).toISOString() });
   }
 

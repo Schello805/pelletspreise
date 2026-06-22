@@ -705,16 +705,20 @@
 	        <div class="dialog-body">
 	          <label class="field" style="grid-column: span 12;">
 	            <span class="label">Benutzername</span>
-	            <input id="loginUsername" autocomplete="username" value="admin" required />
+	            <input id="loginUsername" name="username" autocomplete="username" value="admin" required />
 	          </label>
 	          <label class="field" style="grid-column: span 12;">
 	            <span class="label">Passwort</span>
-	            <input id="loginPassword" type="password" autocomplete="current-password" required />
+	            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+	          </label>
+	          <label class="only-orderable-inner" style="margin:0;">
+	            <input id="loginRemember" type="checkbox" checked />
+	            <span class="label" style="margin:0;">Angemeldet bleiben (30 Tage)</span>
 	          </label>
 	          <div class="help" id="loginError" role="alert" aria-live="polite"></div>
 	        </div>
 	        <div class="dialog-foot">
-	          <span class="muted">Die Sitzung läuft nach 12 Stunden ab.</span>
+	          <span class="muted">Ohne Auswahl läuft die Sitzung nach 12 Stunden ab.</span>
 	          <button class="btn btn-primary btn-sm" type="submit" id="loginSubmitBtn">Anmelden</button>
 	        </div>
 	      </form>

@@ -107,12 +107,13 @@ function setupAuthEvents() {
       event.preventDefault();
       const username = String(document.getElementById("loginUsername")?.value || "").trim();
       const password = String(document.getElementById("loginPassword")?.value || "");
+      const remember = Boolean(document.getElementById("loginRemember")?.checked);
       const error = document.getElementById("loginError");
       const submit = document.getElementById("loginSubmitBtn");
       if (error) error.textContent = "";
       if (submit) submit.disabled = true;
       try {
-        await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
+        await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password, remember }) });
         document.getElementById("loginPassword").value = "";
         dialog?.close();
         await initialiseAuthenticatedApp({ showLogout: true });
