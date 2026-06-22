@@ -1,5 +1,6 @@
 import http from "node:http";
 import crypto from "node:crypto";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +24,16 @@ const projectRoot = path.resolve(__dirname, "..");
 const PORT = Number(process.env.PORT || 8000);
 const HOST = String(process.env.HOST || "127.0.0.1");
 const BASE_URL = String(process.env.BASE_URL || `http://${HOST}:${PORT}`);
-const APP_VERSION = "0.2.0";
+function readAppVersion() {
+  try {
+    const pkg = JSON.parse(fsSync.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+    return String(pkg?.version || "0.0.0");
+  } catch {
+    return "0.0.0";
+  }
+}
+
+const APP_VERSION = readAppVersion();
 const GITHUB_REPO = "Schello805/pelletspreise";
 const APP_USERNAME = String(process.env.APP_USERNAME || "admin");
 const APP_PASSWORD = String(process.env.APP_PASSWORD || "");

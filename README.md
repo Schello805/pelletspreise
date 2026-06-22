@@ -43,6 +43,12 @@ Optional (für Playwright-Quellen wie „HeizPellets24 Angebotsliste“):
 - Datenqualität: Warnung bei starken Abweichungen vom historischen Median
 - System-Tab: Diagnose für Quellen, Speicher, E-Mail, Playwright, Schutz und Updates
 
+## Versionierung
+
+Bei jedem Push auf den Branch `main` erhöht der GitHub-Workflow die Patch-Version in `package.json` automatisch. Der Footer liest diese Version zur Laufzeit über die API aus. Nach dem nächsten LXC-Update zeigt die installierte Webapp somit die neue Versionsnummer an.
+
+Der Workflow benötigt die GitHub-Actions-Berechtigung **Read and write permissions** für `GITHUB_TOKEN` (Repository Settings → Actions → General → Workflow permissions).
+
 ## Alarme (E-Mail)
 
 Im Tab „Alarme“ kannst du Regeln anlegen wie: „Wenn Quelle X ≤ 360 €/t → E-Mail schicken“.
