@@ -14,7 +14,7 @@
 	    <link rel="stylesheet" href="./styles.css" />
 	  </head>
 	  <body>
-	    <nav class="navbar navbar-expand-lg bg-dark navbar-dark sticky-top border-bottom border-secondary-subtle">
+	    <nav class="navbar navbar-expand-lg navbar-dark sticky-top app-nav">
 	      <div class="container">
 	        <a class="navbar-brand fw-bold" href="/pelletpreise/">Pelletpreis-Checker</a>
 	        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#ppNavbar" aria-controls="ppNavbar" aria-expanded="false" aria-label="Navigation umschalten">
@@ -38,13 +38,17 @@
 
     <main class="container">
 	      <section class="panel show" id="tab-query" role="tabpanel" aria-labelledby="tab-query-btn">
-        <div class="card bg-transparent border-secondary-subtle">
-          <div class="card-header bg-transparent border-secondary-subtle">
-            <h1 class="card-title">Preise abrufen</h1>
-            <p class="card-subtitle">Gib Ort, Menge und Produkt an – die App ruft alle aktivierten Quellen ab.</p>
+        <div class="card query-hero">
+          <div class="card-header query-hero-head">
+	            <div>
+	              <span class="eyebrow">Preisradar</span>
+	              <h1 class="card-title">Pelletpreise im Blick</h1>
+	              <p class="card-subtitle">Vergleiche lokale Angebote und Marktwerte – transparent, sparsam und mit Historie.</p>
+	            </div>
+	            <div class="hero-orb" aria-hidden="true"></div>
           </div>
 
-          <form id="queryForm" class="grid" autocomplete="on">
+          <form id="queryForm" class="grid query-grid" autocomplete="on">
             <label class="field">
               <span class="label">PLZ</span>
               <input
@@ -76,12 +80,13 @@
               <span class="help">Wird an Quellen über Platzhalter übergeben.</span>
             </label>
 
-            <div class="field actions">
-              <button class="btn btn-primary" type="submit" id="runBtn">Preise abrufen</button>
+            <div class="field actions query-actions">
+	              <button class="btn btn-primary btn-run" type="submit" id="runBtn"><span aria-hidden="true">↻</span> Preise aktualisieren</button>
+	              <span class="query-action-hint">Cache wird genutzt, wenn möglich.</span>
             </div>
 
             <div class="field" style="grid-column: span 12;">
-              <details class="card bg-transparent border-secondary-subtle" style="margin: 0;">
+              <details class="advanced-options" style="margin: 0;">
                 <summary class="card-header" style="cursor: pointer;">
                   <div class="row" style="align-items: center;">
                     <div>
@@ -153,7 +158,7 @@
           </div>
         </div>
 
-        <div class="card bg-transparent border-secondary-subtle">
+	        <div class="card results-surface">
 	        <div class="card-header header-row">
 	          <div>
 	            <h2 class="card-title">Ergebnisse</h2>
@@ -164,8 +169,8 @@
 	          </div>
 	        </div>
 
-	        <div class="overview">
-	          <div class="section-title">Aktueller Überblick</div>
+	          <div class="overview">
+	          <div class="section-title"><span>Aktueller Überblick</span><span class="section-note">Die wichtigsten Werte zuerst</span></div>
 	          <div class="overview-grid" id="overviewCards">
 	            <div class="overview-card muted">Starte eine Abfrage, um den Überblick zu sehen.</div>
 	          </div>
@@ -252,8 +257,9 @@
 		        <div class="card bg-transparent border-secondary-subtle">
 	          <div class="card-header header-row">
 	            <div>
+	              <span class="eyebrow">Automatisierung</span>
 	              <h1 class="card-title">Quellen</h1>
-	              <p class="card-subtitle">Aktiviere/Deaktiviere Quellen oder lege neue an (HTTP/Regex oder Playwright).</p>
+	              <p class="card-subtitle">Quellen steuern, Historie definieren und den täglichen Abruf zentral verwalten.</p>
 	            </div>
 	            <div class="right actions-inline">
 	              <div class="form-check form-switch" title="Wenn aktiv, ruft der Server 1× täglich automatisch die aktuellen Werte ab (mit den zuletzt verwendeten Abfrage-Einstellungen).">
@@ -386,8 +392,9 @@
 		        <div class="card bg-transparent border-secondary-subtle">
 	          <div class="card-header header-row">
 	            <div>
+	              <span class="eyebrow">Benachrichtigungen</span>
 	              <h1 class="card-title">Alarme</h1>
-	              <p class="card-subtitle">Sende eine E-Mail, wenn ein Preis unter einen Schwellwert fällt (pro Quelle/Serie).</p>
+	              <p class="card-subtitle">Erhalte eine E-Mail, sobald eine Quelle deinen Preisgrenzwert erreicht.</p>
 	            </div>
 	            <div class="right actions-inline">
 	              <span class="badge text-bg-secondary border border-secondary-subtle" id="emailConfigStatus" title="SMTP-Konfiguration">E-Mail: …</span>
@@ -482,8 +489,9 @@
 		        <div class="card bg-transparent border-secondary-subtle">
 	          <div class="card-header header-row">
 	            <div>
+	              <span class="eyebrow">Preisverlauf</span>
 	              <h1 class="card-title">Tageswerte & Analyse</h1>
-	              <p class="card-subtitle">Aggregiert pro Tag (lokal). Ideal für Trends, Vergleiche und Export.</p>
+	              <p class="card-subtitle">Trends, Vergleich und Kennzahlen – pro Tag verdichtet und lokal gespeichert.</p>
 	            </div>
 	            <div class="right actions-inline">
 		              <a class="btn btn-outline-light btn-sm" id="exportDailyCsv" href="/api/history/export.csv?mode=daily" download>Daily CSV</a>
@@ -627,8 +635,9 @@
 		        <div class="card bg-transparent border-secondary-subtle">
 	          <div class="card-header header-row">
 	            <div>
+	              <span class="eyebrow">Rohdaten</span>
 	              <h1 class="card-title">Historie</h1>
-	              <p class="card-subtitle">Die letzten Abrufe (lokal gespeichert).</p>
+	              <p class="card-subtitle">Die letzten gespeicherten Abrufe – ideal zum Nachvollziehen einzelner Werte.</p>
 	            </div>
             <div class="right">
 	              <button class="btn btn-outline-light btn-sm" type="button" id="reloadHistoryBtn">Neu laden</button>
@@ -664,8 +673,9 @@
 	        <div class="card bg-transparent border-secondary-subtle">
 	          <div class="card-header header-row">
 	            <div>
+	              <span class="eyebrow">Betriebsstatus</span>
 	              <h1 class="card-title">System & Diagnose</h1>
-	              <p class="card-subtitle">Status von Abruf, Speicher, E-Mail, Playwright, Sicherheit und Updates.</p>
+	              <p class="card-subtitle">Alles Wichtige auf einen Blick: Abrufe, Speicher, E-Mail, Sicherheit und Updates.</p>
 	            </div>
 	            <div class="right actions-inline">
 	              <button class="btn btn-outline-light btn-sm" type="button" id="refreshSystemBtn">Aktualisieren</button>

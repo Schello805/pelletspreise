@@ -112,15 +112,14 @@ export function applyOffersView({ state, $, escapeHtml, fmtMoney, fmtNumber, fmt
       const price = row.priceEurPerTon != null ? `${fmtNumber(row.priceEurPerTon)} €` : "—";
       const total = row.totalEur != null ? fmtMoney(row.totalEur) : "—";
       return `<tr>
-        <td>${providerCell}</td>
-        <td>${dealerCell}</td>
-        <td class="muted">${delivery}</td>
-        <td class="right">${escapeHtml(price)}</td>
-        <td class="right">${escapeHtml(total)}</td>
-        <td>${statusCellHtml(row.status)}</td>
-        <td class="muted right">${escapeHtml(fmtTime(row.retrievedAt))}</td>
+        <td data-label="Anbieter">${providerCell}</td>
+        <td data-label="Händler">${dealerCell}</td>
+        <td class="muted" data-label="Lieferung bis">${delivery}</td>
+        <td class="right" data-label="Preis (€/t)">${escapeHtml(price)}</td>
+        <td class="right" data-label="Gesamt (€)">${escapeHtml(total)}</td>
+        <td data-label="Status">${statusCellHtml(row.status)}</td>
+        <td class="muted right" data-label="Zeit">${escapeHtml(fmtTime(row.retrievedAt))}</td>
       </tr>`;
     })
     .join("");
 }
-

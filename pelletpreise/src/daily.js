@@ -455,13 +455,13 @@ Händler: ${escapeHtml(last.dealerName || "—")}`;
       const delivery = r.deliveryBy ? escapeHtml(String(r.deliveryBy)) : "—";
       const order = r.orderUrl && isSafeHttpUrl(r.orderUrl) ? `<a class="source-link" href="${escapeAttr(r.orderUrl)}" target="_blank" rel="noopener noreferrer">Link</a>` : "—";
       return `<tr>
-        <td class="muted">${escapeHtml(fmtDateKey(r.date))}</td>
-        <td>${sourceCell}</td>
-        <td>${dealer}</td>
-        <td class="right">${escapeHtml(price)}</td>
-        <td class="right">${escapeHtml(total)}</td>
-        <td class="muted">${delivery}</td>
-        <td>${order}</td>
+        <td class="muted" data-label="Datum">${escapeHtml(fmtDateKey(r.date))}</td>
+        <td data-label="Quelle">${sourceCell}</td>
+        <td data-label="Händler">${dealer}</td>
+        <td class="right" data-label="Preis (€/t)">${escapeHtml(price)}</td>
+        <td class="right" data-label="Gesamt (€)">${escapeHtml(total)}</td>
+        <td class="muted" data-label="Lieferung bis">${delivery}</td>
+        <td data-label="Bestellung">${order}</td>
       </tr>`;
     })
     .join("");

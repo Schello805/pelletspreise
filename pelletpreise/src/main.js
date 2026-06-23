@@ -40,6 +40,10 @@ function validateQuery(query) {
   return null;
 }
 
+function loadingRow(columns, label = "Wird geladen …") {
+  return `<tr><td colspan="${columns}" class="loading-cell"><span class="loading-shimmer"></span><span>${escapeHtml(label)}</span></td></tr>`;
+}
+
 function normalizeExtract(ex) {
   if (!ex || typeof ex !== "object") return null;
   const out = {};
@@ -207,11 +211,11 @@ function renderOverview({ query, avgResults, offerRows }) {
       : "";
 
   host.innerHTML = `
-    <div class="overview-card">
-      <div class="overview-title">Beste Bestellung (gesamt)</div>
+    <div class="overview-card overview-card-primary">
+      <div class="overview-title">Empfehlung · günstigste Bestellung</div>
       <div class="overview-value">${bestOffer ? safe(fmtTotal(bestOffer.totalEur)) : "—"}</div>
       <div class="overview-meta">
-        ${bestOffer ? `${safe(bestOffer.dealer)} · ${safe(bestOffer.provider)}<br/>${safe(fmtPerTon(bestOffer.priceEurPerTon))}` : "—"}<br/>
+        ${bestOffer ? `${safe(bestOffer.dealer)} · ${safe(bestOffer.provider)}<br/>${safe(fmtPerTon(bestOffer.priceEurPerTon))}` : "Noch keine passenden Angebote"}<br/>
         PLZ ${safe(query.postalCode)} · ${safe(fmtNumber(query.quantityTons))} t · ${safe(mapProductLabel(query.product))}
       </div>
       <div class="overview-actions">
@@ -219,7 +223,7 @@ function renderOverview({ query, avgResults, offerRows }) {
       </div>
     </div>
     <div class="overview-card">
-      <div class="overview-title">Deutschland-Ø (günstigste Quelle)</div>
+      <div class="overview-title">Marktwert · günstigste Quelle</div>
       <div class="overview-value">${bestAvg ? safe(fmtPerTon(bestAvg.priceEurPerTon)).replace("€ / t", "€") : "—"}</div>
       <div class="overview-meta">
         ${bestAvg ? `${safe(bestAvg.sourceName || bestAvg.sourceId)}<br/>Stand: ${safe(bestAvg.asOf || "—")}` : "—"}
@@ -229,7 +233,7 @@ function renderOverview({ query, avgResults, offerRows }) {
       </div>
     </div>
     <div class="overview-card">
-      <div class="overview-title">Beste je Anbieter</div>
+      <div class="overview-title">Weitere starke Angebote</div>
       <div class="overview-meta">
         ${
           providerBest.length
@@ -273,12 +277,12 @@ function renderResults({ query, results, meta = {} }) {
           const asOf = r.asOf ? String(r.asOf) : "—";
           const sourceCell = linkHtml(r.url, r.sourceName || r.sourceId || "—");
           return `<tr>
-            <td>${sourceCell}</td>
-            <td class="right">${escapeHtml(price)}</td>
-            <td class="right">${escapeHtml(total)}</td>
-            <td class="muted">${escapeHtml(asOf)}</td>
-            <td>${statusCellHtml(r)}</td>
-            <td class="muted right">${escapeHtml(fmtTime(r.retrievedAt))}</td>
+            <td data-label="Quelle">${sourceCell}</td>
+            <td class="right" data-label="Preis (€/t)">${escapeHtml(price)}</td>
+            <td class="right" data-label="Gesamt (€)">${escapeHtml(total)}</td>
+            <td class="muted" data-label="Stand">${escapeHtml(asOf)}</td>
+            <td data-label="Status">${statusCellHtml(r)}</td>
+            <td class="muted right" data-label="Zeit">${escapeHtml(fmtTime(r.retrievedAt))}</td>
           </tr>`;
         })
         .join("")
@@ -323,18 +327,18 @@ function renderSources(sources) {
           ? `<span class="badge bg-secondary-subtle text-light ms-1" title="Cache: ${escapeAttr(String(s.cacheHours))}h">cache</span>`
           : "";
       return `<tr>
-        <td><input type="checkbox" data-action="toggle" data-id="${escapeAttr(s.id)}" ${enabled} /></td>
-        <td>${escapeHtml(s.name)}</td>
-        <td class="muted">${kindLabel}${cacheBadge}</td>
-        <td>
+        <td data-label="Aktiv"><input type="checkbox" data-action="toggle" data-id="${escapeAttr(s.id)}" ${enabled} /></td>
+        <td data-label="Name">${escapeHtml(s.name)}</td>
+        <td class="muted" data-label="Typ">${kindLabel}${cacheBadge}</td>
+        <td data-label="Statistik">
           <select class="form-select form-select-sm" data-action="historyMode" data-id="${escapeAttr(s.id)}" aria-label="Statistik">
             ${hm("auto", "Auto")}
             ${hm("best", "Best")}
             ${hm("none", "Off")}
           </select>
         </td>
-        <td class="muted">${escapeHtml(last)}<br/>${sourceHealth}</td>
-        <td class="right">
+        <td class="muted" data-label="Zuletzt">${escapeHtml(last)}<br/>${sourceHealth}</td>
+        <td class="right" data-label="Aktion">
           <button class="btn btn-outline-light btn-sm" type="button" data-action="edit" data-id="${escapeAttr(s.id)}">Bearbeiten</button>
           <button class="btn btn-outline-danger btn-sm" type="button" data-action="delete" data-id="${escapeAttr(s.id)}">Löschen</button>
         </td>
@@ -454,14 +458,14 @@ function renderHistory(items) {
     .map((q) => {
       const sourceCell = linkHtml(q.url, q.sourceName || q.sourceId);
       return `<tr>
-        <td class="muted">${escapeHtml(fmtTime(q.retrievedAt))}</td>
-        <td>${sourceCell}</td>
-        <td class="muted">${escapeHtml(q.query?.postalCode || "—")}</td>
-        <td class="muted">${escapeHtml(fmtNumber(q.query?.quantityTons))}</td>
-        <td class="muted">${escapeHtml(mapProductLabel(q.query?.product))}</td>
-        <td>${q.priceEurPerTon != null ? escapeHtml(`${fmtNumber(q.priceEurPerTon)} €`) : "—"}</td>
-        <td class="muted">${escapeHtml(q.asOf || "—")}</td>
-        <td>${statusCellHtml(q)}</td>
+        <td class="muted" data-label="Zeit">${escapeHtml(fmtTime(q.retrievedAt))}</td>
+        <td data-label="Quelle">${sourceCell}</td>
+        <td class="muted" data-label="PLZ">${escapeHtml(q.query?.postalCode || "—")}</td>
+        <td class="muted" data-label="Menge (t)">${escapeHtml(fmtNumber(q.query?.quantityTons))}</td>
+        <td class="muted" data-label="Produkt">${escapeHtml(mapProductLabel(q.query?.product))}</td>
+        <td data-label="Preis (€/t)">${q.priceEurPerTon != null ? escapeHtml(`${fmtNumber(q.priceEurPerTon)} €`) : "—"}</td>
+        <td class="muted" data-label="Stand">${escapeHtml(q.asOf || "—")}</td>
+        <td data-label="Status">${statusCellHtml(q)}</td>
       </tr>`;
     })
     .join("");
@@ -659,16 +663,16 @@ function renderAlerts() {
       const name = r.name ? escapeHtml(String(r.name)) : `<span class="muted">—</span>`;
       const thr = typeof r.thresholdEurPerTon === "number" ? r.thresholdEurPerTon : "";
       return `<tr>
-        <td><input type="checkbox" data-action="toggleAlert" data-id="${escapeAttr(r.id)}" ${enabled} /></td>
-        <td>${name}</td>
-        <td>${escapeHtml(srcName)}</td>
-        <td class="right">
+        <td data-label="Aktiv"><input type="checkbox" data-action="toggleAlert" data-id="${escapeAttr(r.id)}" ${enabled} /></td>
+        <td data-label="Name">${name}</td>
+        <td data-label="Quelle">${escapeHtml(srcName)}</td>
+        <td class="right" data-label="Grenzwert (€/t)">
           <input class="form-control form-control-sm" style="max-width: 140px; margin-left:auto;" type="number" step="0.01" min="1"
             value="${escapeAttr(String(thr))}" data-action="threshold" data-id="${escapeAttr(r.id)}" />
         </td>
-        <td class="muted right">${escapeHtml(lastMail)}</td>
-        <td>${status}</td>
-        <td class="right">
+        <td class="muted right" data-label="Letzte E-Mail">${escapeHtml(lastMail)}</td>
+        <td data-label="Status">${status}</td>
+        <td class="right" data-label="Aktion">
           <button class="btn btn-outline-light btn-sm" type="button" data-action="saveAlert" data-id="${escapeAttr(r.id)}">Speichern</button>
           <button class="btn btn-outline-danger btn-sm" type="button" data-action="deleteAlert" data-id="${escapeAttr(r.id)}">Löschen</button>
         </td>
@@ -711,8 +715,8 @@ function setupEvents() {
     }
 
     setLoading(true);
-    $("resultsAvgBody").innerHTML = `<tr><td colspan="6" class="muted">Abruf läuft …</td></tr>`;
-    $("resultsOffersBody").innerHTML = `<tr><td colspan="7" class="muted">Abruf läuft …</td></tr>`;
+    $("resultsAvgBody").innerHTML = loadingRow(6, "Preise werden abgefragt …");
+    $("resultsOffersBody").innerHTML = loadingRow(7, "Angebote werden sortiert …");
     try {
       toast("Abruf läuft …", { timeoutMs: 1800 });
       const data = await apiFetch("/api/scrape/run", { method: "POST", body: JSON.stringify({ query }), timeoutMs: 60_000 });
@@ -1088,8 +1092,8 @@ async function initialiseAuthenticatedApp({ showLogout = false } = {}) {
     const validationError = validateQuery(query);
     if (!validationError) {
       setLoading(true, "Aktualisiere …");
-      $("resultsAvgBody").innerHTML = `<tr><td colspan="6" class="muted">Abruf läuft …</td></tr>`;
-      $("resultsOffersBody").innerHTML = `<tr><td colspan="7" class="muted">Abruf läuft …</td></tr>`;
+      $("resultsAvgBody").innerHTML = loadingRow(6, "Preise werden abgefragt …");
+      $("resultsOffersBody").innerHTML = loadingRow(7, "Angebote werden sortiert …");
       toast("Aktualisiere Preise …", { timeoutMs: 1500 });
       const data = await apiFetch("/api/scrape/run", { method: "POST", body: JSON.stringify({ query }), timeoutMs: 60_000 });
       renderResults({ query: data.query, results: data.results || [], meta: data.meta || {} });
