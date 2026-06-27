@@ -298,10 +298,17 @@ export function renderDailyHistory({
   const lastEl = $("dailyLastPoint");
   const canvas = $("historyChart");
   const compareHost = $("dailyCompareSeries");
+  const compareHint = document.getElementById("dailyCompareHint");
 
-  const { groupBy, metric, search, compareMode, compareMax, compareKeys } = getDailyControls({ $ });
+  const { groupBy, metric, search, compareMode, compareMax, compareKeys, onlyOrderable, postalCode, product } = getDailyControls({ $ });
   const seriesList = buildSeriesFromDailyRows(state.dailyRows, { groupBy: groupBy === "dealer" ? "dealer" : "source" });
   const filtered = search ? seriesList.filter((s) => s.label.toLowerCase().includes(search)) : seriesList;
+  const activeFilterLabels = [
+    search ? "Suche" : "",
+    onlyOrderable ? "nur bestellbar" : "",
+    postalCode ? `PLZ ${postalCode}` : "",
+    product ? "Produkt" : "",
+  ].filter(Boolean);
 
   if (!filtered.length) {
     select.innerHTML = "";
@@ -309,6 +316,7 @@ export function renderDailyHistory({
     statsEl.textContent = "—";
     lastEl.textContent = "—";
     if (compareHost) compareHost.innerHTML = "";
+    if (compareHint) compareHint.textContent = activeFilterLabels.length ? `Keine Serien für aktuelle Filter: ${activeFilterLabels.join(", ")}.` : "Keine Serien im gewählten Zeitraum.";
     drawMultiLineChart(canvas, [], {});
     return;
   }
@@ -351,6 +359,13 @@ export function renderDailyHistory({
         })
         .join("");
     }
+  }
+
+  if (compareHint) {
+    const base = `${filtered.length} von ${seriesList.length} Serien sichtbar.`;
+    const filterText = activeFilterLabels.length ? ` Aktive Filter: ${activeFilterLabels.join(", ")}.` : "";
+    const lowCountHint = filtered.length <= 1 ? " Für mehr Checkboxen Filter lockern oder weitere Quellen mit Historienwerten abrufen." : "";
+    compareHint.textContent = `${base}${filterText}${lowCountHint}`;
   }
 
   const chartSeries = compareMode
