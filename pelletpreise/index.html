@@ -705,11 +705,10 @@
 	            <div>
 	              <span class="eyebrow">Betriebsstatus</span>
 	              <h1 class="card-title">System & Diagnose</h1>
-	              <p class="card-subtitle">Alles Wichtige auf einen Blick: Abrufe, Speicher, E-Mail, Sicherheit und Updates.</p>
+	              <p class="card-subtitle">Alles Wichtige auf einen Blick: Abrufe, Speicher, E-Mail und Sicherheit.</p>
 	            </div>
 	            <div class="right actions-inline">
 	              <button class="btn btn-outline-light btn-sm" type="button" id="refreshSystemBtn">Aktualisieren</button>
-	              <button class="btn btn-primary btn-sm" type="button" id="runFrontendUpdateBtn" hidden>Update installieren</button>
 	            </div>
 	          </div>
 	          <div class="system-grid" id="systemSummary">
@@ -722,7 +721,10 @@
 	    <footer class="footer container">
 	      <div class="footer-inner">
 	        <span class="muted">Hinweis: Scraping kann gegen Nutzungsbedingungen verstoßen. Nutze nur Quellen, die du verwenden darfst.</span>
-	        <span class="muted" id="footerVersion" aria-label="Version" title=""></span>
+	        <span class="footer-version-wrap">
+	          <span class="muted" id="footerVersion" aria-label="Version" title=""></span>
+	          <button class="btn btn-primary btn-sm footer-update-btn" type="button" id="runFrontendUpdateBtn" hidden>Update installieren</button>
+	        </span>
 	        <nav class="footer-links" aria-label="Rechtliches">
 	          <a href="https://github.com/Schello805/pelletspreise" target="_blank" rel="noopener noreferrer">GitHub</a>
 	          <a href="/impressum.html">Impressum</a>

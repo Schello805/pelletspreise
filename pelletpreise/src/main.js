@@ -535,17 +535,26 @@ function renderDailyHistory() {
   });
 }
 
-function setFooterVersion({ version, rev, updateAvailable, updateHint } = {}) {
+function setFooterVersion({ version, rev, updateAvailable, updateHint, frontendUpdateReady, updateRequested } = {}) {
   const el = document.getElementById("footerVersion");
-  if (!el) return;
+  const updateBtn = document.getElementById("runFrontendUpdateBtn");
   const v = String(version || "").trim();
   const r = String(rev || "").trim();
   const parts = [];
   if (v) parts.push(`v${v}`);
   if (r) parts.push(`rev ${r}`);
   if (updateAvailable) parts.push("Update verfügbar");
-  el.textContent = parts.join(" · ");
-  el.title = String(updateHint || "").trim();
+  if (el) {
+    el.textContent = parts.join(" · ");
+    el.title = String(updateHint || "").trim();
+  }
+  if (updateBtn) {
+    const canRun = Boolean(updateAvailable && frontendUpdateReady && !updateRequested);
+    updateBtn.hidden = !updateAvailable;
+    updateBtn.disabled = !canRun;
+    updateBtn.title = String(updateHint || "").trim();
+    updateBtn.textContent = updateRequested ? "Update läuft …" : frontendUpdateReady ? "Update installieren" : "Update nicht bereit";
+  }
 }
 
 function formatBytes(value) {
@@ -558,17 +567,11 @@ function formatBytes(value) {
 
 function renderSystem() {
   const host = document.getElementById("systemSummary");
-  const updateBtn = document.getElementById("runFrontendUpdateBtn");
   if (!host) return;
   const diag = state.diagnostics || {};
-  const update = state.update || {};
   const rate = diag.rateLimit || state.scrapeStatus?.rateLimit || {};
   const failed = Array.isArray(diag.sources?.failed) ? diag.sources.failed : [];
   const storage = Array.isArray(diag.storage) ? diag.storage : [];
-  const updateText = update.updateAvailable ? "Neue Version verfügbar" : update.remoteOk ? "Auf dem aktuellen Stand" : "GitHub-Status nicht verfügbar";
-  const updateHint = update.frontendUpdateReady
-    ? "Das Update startet als systemd-Job; die Seite verbindet sich danach automatisch neu."
-    : "Frontend-Update benötigt APP_PASSWORD, ALLOW_FRONTEND_UPDATE=1 und den einmalig installierten systemd-Trigger.";
 
   host.innerHTML = `
     <div class="overview-card"><div class="overview-title">Abruflimit</div><div class="overview-value">${escapeHtml(String(rate.remainingRuns ?? "—"))}</div><div class="overview-meta">echte Abrufe heute verfügbar${rate.nextAllowedAt ? `<br/>Nächster Abruf: ${escapeHtml(fmtTime(rate.nextAllowedAt))}` : ""}</div></div>
@@ -576,17 +579,8 @@ function renderSystem() {
     <div class="overview-card"><div class="overview-title">E-Mail</div><div class="overview-value">${diag.email?.configured ? "Bereit" : "Offen"}</div><div class="overview-meta">${diag.email?.configured ? `Empfänger: ${escapeHtml(diag.email.to || "—")}` : "SMTP noch nicht vollständig konfiguriert"}</div></div>
     <div class="overview-card"><div class="overview-title">Playwright</div><div class="overview-value">${diag.playwright?.chromiumOk ? "Bereit" : "Prüfen"}</div><div class="overview-meta">${diag.playwright?.chromiumOk ? "Chromium installiert" : "Browser fehlt oder Playwright nicht verfügbar"}</div></div>
     <div class="overview-card"><div class="overview-title">Schutz</div><div class="overview-value">${diag.security?.passwordProtection ? "Passwort aktiv" : "LAN offen"}</div><div class="overview-meta">${diag.security?.passwordProtection ? `Benutzer: ${escapeHtml(diag.security.username || "admin")}` : "Optional: APP_PASSWORD setzen"}</div></div>
-    <div class="overview-card"><div class="overview-title">Update</div><div class="overview-value">${escapeHtml(updateText)}</div><div class="overview-meta">${escapeHtml(updateHint)}</div></div>
     <div class="overview-card system-storage"><div class="overview-title">Lokaler Speicher</div><div class="overview-meta">${storage.length ? storage.map((entry) => `${escapeHtml(entry.name)}: ${escapeHtml(formatBytes(entry.bytes))}`).join("<br/>") : "—"}</div></div>
   `;
-
-  if (updateBtn) {
-    const canRun = Boolean(update.updateAvailable && update.frontendUpdateReady && !update.updateRequested);
-    updateBtn.hidden = !update.updateAvailable;
-    updateBtn.disabled = !canRun;
-    updateBtn.title = updateHint;
-    updateBtn.textContent = update.updateRequested ? "Update wird gestartet …" : "Update installieren";
-  }
 }
 
 async function refreshSystem() {
@@ -599,6 +593,8 @@ async function refreshSystem() {
     rev: update?.current?.rev,
     updateAvailable: Boolean(update?.updateAvailable),
     updateHint: update?.updateHint,
+    frontendUpdateReady: Boolean(update?.frontendUpdateReady),
+    updateRequested: Boolean(update?.updateRequested),
   });
   renderSystem();
 }
@@ -1182,6 +1178,8 @@ async function initialiseAuthenticatedApp({ showLogout = false } = {}) {
         rev: data.current?.rev,
         updateAvailable: Boolean(data.updateAvailable),
         updateHint: data.updateHint,
+        frontendUpdateReady: Boolean(data.frontendUpdateReady),
+        updateRequested: Boolean(data.updateRequested),
       });
     })
     .catch(() => {});

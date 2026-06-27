@@ -796,6 +796,18 @@ textarea:focus,
   padding-top: 16px;
 }
 
+.footer-version-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.footer-update-btn {
+  box-shadow: 0 8px 18px rgba(53, 201, 149, 0.14);
+}
+
 .footer-links {
   display: inline-flex;
   gap: 12px;
