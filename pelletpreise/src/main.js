@@ -586,10 +586,18 @@ function setFooterVersion({ version, rev, updateAvailable, updateHint, frontendU
   }
   if (updateBtn) {
     const canRun = Boolean(updateAvailable && frontendUpdateReady && !updateRequested);
-    updateBtn.hidden = !updateAvailable;
+    updateBtn.hidden = false;
     updateBtn.disabled = !canRun;
     updateBtn.title = String(updateHint || "").trim();
-    updateBtn.textContent = updateRequested ? "Update läuft …" : frontendUpdateReady ? "Update installieren" : "Update nicht bereit";
+    updateBtn.textContent = updateRequested
+      ? "Update läuft …"
+      : updateAvailable && frontendUpdateReady
+        ? "Update installieren"
+        : updateAvailable
+          ? "Update nicht bereit"
+          : updateAvailable === false
+            ? "Auf aktuellem Stand"
+            : "Update prüfen …";
   }
 }
 
