@@ -893,16 +893,9 @@ function setupEvents() {
   const runUpdateBtn = document.getElementById("runFrontendUpdateBtn");
   if (runUpdateBtn) {
     runUpdateBtn.addEventListener("click", async () => {
-      if (!confirm("Update jetzt installieren? Die Webapp ist während des Neustarts kurz nicht erreichbar.")) return;
-      try {
-        runUpdateBtn.disabled = true;
-        await apiFetch("/api/update/run", { method: "POST", body: JSON.stringify({}) });
-        toast("Update angefordert. Die Seite wird in Kürze neu geladen.", { kind: "success", timeoutMs: 5200 });
-        window.setTimeout(() => window.location.reload(), 10_000);
-      } catch (err) {
-        runUpdateBtn.disabled = false;
-        toast(err.message || "Update konnte nicht gestartet werden.", { kind: "error", timeoutMs: 5200 });
-      }
+      runUpdateBtn.disabled = true;
+      toast("Warteseite wird geöffnet. Das Update startet dort automatisch.", { kind: "success", timeoutMs: 3200 });
+      window.location.href = "/pelletpreise/update.html?start=1";
     });
   }
   ["dailyCompareMode", "dailyCompareMax"].forEach((id) => {
@@ -1064,6 +1057,10 @@ async function initialiseAuthenticatedApp({ showLogout = false } = {}) {
   if (authenticatedAppInitialized) return;
   authenticatedAppInitialized = true;
   document.getElementById("logoutBtn").hidden = !showLogout;
+  if (new URLSearchParams(window.location.search).get("updated") === "1") {
+    toast("Update abgeschlossen. Willkommen zurück.", { kind: "success", timeoutMs: 4200 });
+    window.history.replaceState(null, "", "/pelletpreise/");
+  }
   await refreshDiagnostics().catch(() => {});
 
   // Non-blocking update check (GitHub main SHA)

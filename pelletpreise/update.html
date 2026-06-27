@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Pelletpreis-Checker wird aktualisiert</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #070b18;
+        --panel: rgba(22, 27, 46, 0.86);
+        --panel-strong: rgba(31, 38, 65, 0.92);
+        --line: rgba(148, 163, 184, 0.22);
+        --text: #f4f7fb;
+        --muted: #a8b3c7;
+        --accent: #5eead4;
+        --accent-2: #60a5fa;
+        --danger: #fb7185;
+        --shadow: 0 26px 80px rgba(0, 0, 0, 0.38);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 18% 18%, rgba(94, 234, 212, 0.18), transparent 32%),
+          radial-gradient(circle at 82% 12%, rgba(96, 165, 250, 0.16), transparent 30%),
+          linear-gradient(135deg, #080b18 0%, #101525 55%, #070b18 100%);
+      }
+
+      main {
+        width: min(720px, 100%);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        padding: clamp(24px, 4vw, 42px);
+        background: linear-gradient(180deg, var(--panel), rgba(12, 16, 30, 0.9));
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        position: relative;
+      }
+
+      main::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto;
+        height: 4px;
+        background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent));
+        background-size: 220% 100%;
+        animation: shimmer 2.4s linear infinite;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.04);
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 22px var(--accent);
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+
+      h1 {
+        margin: 22px 0 10px;
+        font-size: clamp(32px, 6vw, 54px);
+        line-height: 0.98;
+        letter-spacing: -0.06em;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.62;
+        font-size: 16px;
+      }
+
+      .status {
+        margin-top: 28px;
+        padding: 18px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: var(--panel-strong);
+      }
+
+      .status-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .status-title {
+        font-weight: 900;
+      }
+
+      .timer {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .bar {
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(148, 163, 184, 0.14);
+      }
+
+      .bar span {
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--accent), var(--accent-2));
+        animation: indeterminate 1.45s ease-in-out infinite;
+      }
+
+      ol {
+        margin: 22px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+        list-style: none;
+      }
+
+      li {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        color: var(--muted);
+      }
+
+      li::before {
+        content: "";
+        width: 9px;
+        height: 9px;
+        margin-top: 8px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: rgba(168, 179, 199, 0.45);
+      }
+
+      li.active {
+        color: var(--text);
+        font-weight: 800;
+      }
+
+      li.active::before {
+        background: var(--accent);
+        box-shadow: 0 0 16px var(--accent);
+      }
+
+      li.error {
+        color: var(--danger);
+      }
+
+      li.error::before {
+        background: var(--danger);
+        box-shadow: 0 0 16px var(--danger);
+      }
+
+      .actions {
+        margin-top: 28px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      a,
+      button {
+        border: 0;
+        border-radius: 14px;
+        padding: 12px 16px;
+        font: inherit;
+        font-weight: 900;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      a.primary {
+        color: #06131a;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      }
+
+      button.secondary {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--line);
+      }
+
+      .hint {
+        margin-top: 18px;
+        font-size: 13px;
+      }
+
+      @keyframes shimmer {
+        to {
+          background-position: 220% 0;
+        }
+      }
+
+      @keyframes pulse {
+        50% {
+          transform: scale(1.35);
+          opacity: 0.65;
+        }
+      }
+
+      @keyframes indeterminate {
+        0% {
+          transform: translateX(-110%);
+        }
+        100% {
+          transform: translateX(260%);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="badge"><span class="dot" aria-hidden="true"></span><span id="badgeText">Update wird vorbereitet</span></div>
+      <h1>Gleich wieder da.</h1>
+      <p>
+        Der Pelletpreis-Checker installiert das Update im Hintergrund und startet den Dienst neu. Diese Seite bleibt bewusst stehen und
+        verbindet sich automatisch wieder, sobald der Server erreichbar ist.
+      </p>
+
+      <section class="status" aria-live="polite">
+        <div class="status-head">
+          <div class="status-title" id="statusTitle">Update wird gestartet …</div>
+          <div class="timer" id="timer">00:00</div>
+        </div>
+        <div class="bar" aria-hidden="true"><span></span></div>
+        <ol>
+          <li id="step-start" class="active">Update-Auftrag an den Server senden</li>
+          <li id="step-restart">Dienst darf kurz offline sein</li>
+          <li id="step-health">Erreichbarkeit prüfen</li>
+          <li id="step-ready">Zur App zurückkehren</li>
+        </ol>
+      </section>
+
+      <div class="actions">
+        <a class="primary" href="/pelletpreise/" id="appLink">Zur App</a>
+        <button class="secondary" type="button" id="retryBtn">Jetzt prüfen</button>
+      </div>
+      <p class="hint" id="hint">Tipp: Bitte diese Seite während des Updates offen lassen. Kein Router-Voodoo nötig.</p>
+    </main>
+
+    <script>
+      const startedAt = Date.now();
+      const params = new URLSearchParams(window.location.search);
+      const shouldStart = params.get("start") === "1";
+      const statusTitle = document.getElementById("statusTitle");
+      const badgeText = document.getElementById("badgeText");
+      const timer = document.getElementById("timer");
+      const hint = document.getElementById("hint");
+      const retryBtn = document.getElementById("retryBtn");
+      const steps = {
+        start: document.getElementById("step-start"),
+        restart: document.getElementById("step-restart"),
+        health: document.getElementById("step-health"),
+        ready: document.getElementById("step-ready"),
+      };
+
+      let pollTimer = null;
+      let consecutiveOk = 0;
+      let updateStarted = false;
+
+      function setActive(step) {
+        Object.values(steps).forEach((el) => el.classList.remove("active", "error"));
+        if (steps[step]) steps[step].classList.add("active");
+      }
+
+      function setError(message) {
+        statusTitle.textContent = message;
+        badgeText.textContent = "Aufmerksamkeit nötig";
+        hint.textContent = "Wenn das länger als ein paar Minuten so bleibt: journalctl -u pelletpreis-checker.service -n 200 --no-pager prüfen.";
+        Object.values(steps).forEach((el) => el.classList.remove("active"));
+        steps.start.classList.add("error");
+      }
+
+      function updateTimer() {
+        const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+        const min = String(Math.floor(seconds / 60)).padStart(2, "0");
+        const sec = String(seconds % 60).padStart(2, "0");
+        timer.textContent = `${min}:${sec}`;
+      }
+
+      async function startUpdate() {
+        if (!shouldStart || updateStarted) return;
+        updateStarted = true;
+        try {
+          statusTitle.textContent = "Update-Auftrag wird gesendet …";
+          setActive("start");
+          const response = await fetch("/api/update/run", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          });
+          const body = await response.json().catch(() => null);
+          if (!response.ok) throw new Error(body?.error || body?.message || response.statusText || "Update konnte nicht gestartet werden.");
+          statusTitle.textContent = "Update läuft — der Server startet gleich neu …";
+          badgeText.textContent = "Update läuft";
+          setActive("restart");
+          window.history.replaceState(null, "", "/pelletpreise/update.html");
+        } catch (error) {
+          setError(error?.message || "Update konnte nicht gestartet werden.");
+        }
+      }
+
+      async function checkHealth() {
+        setActive(consecutiveOk ? "ready" : "health");
+        try {
+          const response = await fetch(`/api/health?wait=${Date.now()}`, {
+            cache: "no-store",
+            credentials: "same-origin",
+          });
+          const body = await response.json().catch(() => null);
+          if (!response.ok || !body?.ok) throw new Error("Server noch nicht bereit");
+          consecutiveOk += 1;
+          statusTitle.textContent = consecutiveOk < 2 ? "Server antwortet wieder — stabilisiere kurz …" : "Update abgeschlossen. Zurück zur App …";
+          badgeText.textContent = "Server ist wieder da";
+          setActive("ready");
+          if (consecutiveOk >= 2) {
+            window.clearInterval(pollTimer);
+            window.setTimeout(() => {
+              window.location.href = "/pelletpreise/?updated=1";
+            }, 900);
+          }
+        } catch {
+          consecutiveOk = 0;
+          statusTitle.textContent = "Warte auf den Neustart des Servers …";
+          badgeText.textContent = "Server startet neu";
+          setActive("restart");
+        }
+      }
+
+      retryBtn.addEventListener("click", checkHealth);
+      window.setInterval(updateTimer, 500);
+      startUpdate().finally(() => {
+        window.setTimeout(checkHealth, 2500);
+        pollTimer = window.setInterval(checkHealth, 2500);
+      });
+    </script>
+  </body>
+</html>
