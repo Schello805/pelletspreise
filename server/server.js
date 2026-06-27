@@ -418,7 +418,7 @@ function resolveFrontendPath(urlPath) {
 
 function resolveRootStaticPath(urlPath) {
   const safe = urlPath.replace(/\/+/g, "/");
-  const allow = new Set(["/impressum.html", "/datenschutz.html", "/cookies.html"]);
+  const allow = new Set([]);
   if (!allow.has(safe)) return null;
   const filename = safe.slice(1);
   return path.join(projectRoot, filename);
