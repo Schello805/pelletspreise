@@ -149,6 +149,14 @@ main .card.bg-transparent {
   align-items: flex-start;
 }
 
+.hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .hero-orb {
   width: 58px;
   height: 58px;
@@ -1014,5 +1022,405 @@ details.card,
   }
   .system-grid .overview-card {
     grid-column: span 12;
+  }
+}
+
+/* Compact modern density pass */
+:root {
+  --pp-radius: 16px;
+  --pp-radius2: 11px;
+  --pp-panel: rgba(15, 21, 36, 0.86);
+  --pp-panel2: rgba(22, 30, 50, 0.92);
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.app-nav {
+  padding: 6px 0;
+}
+
+.navbar-brand {
+  font-size: 1.12rem;
+}
+
+.navbar .nav-link.tab {
+  padding: 6px 9px;
+  border-radius: 9px;
+}
+
+main.container {
+  padding-top: 12px;
+}
+
+.card {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+}
+
+.card + .card {
+  margin-top: 12px;
+}
+
+.card-header {
+  padding: 13px 16px;
+}
+
+.card-title,
+h1.card-title {
+  margin: 0;
+  font-size: clamp(1.1rem, 1.6vw, 1.8rem);
+  line-height: 1.05;
+}
+
+.card-subtitle {
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.query-hero-head {
+  align-items: center;
+}
+
+.hero-orb {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+}
+
+.hero-orb::after {
+  transform: rotate(45deg) translate(11px, 5px) scale(0.72);
+}
+
+.grid {
+  gap: 9px;
+  padding: 12px;
+}
+
+.field {
+  gap: 4px;
+}
+
+.label {
+  font-size: 12px;
+}
+
+.help,
+.card-subtitle,
+.overview-meta,
+.analysis-body {
+  font-size: 12px;
+}
+
+input,
+select,
+textarea,
+.form-select,
+.form-control {
+  min-height: 34px;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+}
+
+textarea {
+  line-height: 1.35;
+}
+
+.btn {
+  border-radius: 9px;
+}
+
+.btn-sm {
+  --bs-btn-padding-y: 0.22rem;
+  --bs-btn-padding-x: 0.48rem;
+  --bs-btn-font-size: 0.78rem;
+}
+
+.btn-run {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.advanced-options summary {
+  padding: 10px 12px;
+}
+
+.overview {
+  padding: 10px 12px;
+}
+
+.overview-grid,
+.system-grid,
+.analysis-grid,
+.offers-controls {
+  gap: 9px;
+}
+
+.overview-card {
+  min-height: auto;
+  padding: 11px 12px;
+}
+
+.overview-title {
+  margin-bottom: 5px;
+  font-size: 9.5px;
+}
+
+.overview-value {
+  margin-bottom: 4px;
+  font-size: clamp(1.1rem, 2.2vw, 1.55rem);
+}
+
+.overview-actions {
+  margin-top: 8px;
+}
+
+.section-title {
+  padding: 9px 12px 0;
+  margin-bottom: 6px;
+  font-size: 10.5px;
+}
+
+.table > :not(caption) > * > * {
+  padding: 7px 9px;
+}
+
+.table {
+  font-size: 13px;
+}
+
+.table-wrap.px-3,
+.px-3 {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+}
+
+.pb-3 {
+  padding-bottom: 12px !important;
+}
+
+.pt-3 {
+  padding-top: 12px !important;
+}
+
+.run-status {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.chart-wrap {
+  padding: 0 12px 10px;
+}
+
+.compare-series {
+  max-height: 150px;
+  padding: 8px 10px;
+}
+
+.analysis-card {
+  padding: 10px;
+}
+
+.analysis-title {
+  margin-bottom: 5px;
+}
+
+.dialog {
+  width: min(980px, calc(100% - 28px));
+  border-radius: 18px;
+}
+
+.dialog-head,
+.dialog-foot {
+  padding: 11px 14px;
+}
+
+.dialog-body {
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.dialog-title {
+  font-size: 15px;
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+}
+
+.source-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(166, 187, 232, 0.1);
+}
+
+.source-guide-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid rgba(166, 187, 232, 0.13);
+  border-radius: var(--pp-radius2);
+  background: linear-gradient(145deg, rgba(103, 230, 190, 0.08), rgba(121, 173, 255, 0.035));
+}
+
+.source-guide-card strong {
+  display: block;
+  line-height: 1.2;
+}
+
+.source-guide-card small {
+  display: block;
+  margin-top: 2px;
+  color: var(--pp-muted);
+  line-height: 1.25;
+}
+
+.guide-step,
+.wizard-step span {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #071b15;
+  background: var(--pp-accent);
+  font-weight: 900;
+  font-size: 12px;
+}
+
+.source-wizard {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.wizard-step {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgba(166, 187, 232, 0.13);
+  border-radius: var(--pp-radius2);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.wizard-step:not(.is-active) span {
+  background: rgba(166, 187, 232, 0.24);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.wizard-step strong,
+.wizard-step small {
+  display: block;
+  line-height: 1.05;
+}
+
+.wizard-step small {
+  margin-top: 2px;
+  color: var(--pp-muted);
+  font-size: 11px;
+}
+
+.source-url-field {
+  grid-column: span 12;
+}
+
+.inline-control {
+  display: flex;
+  gap: 8px;
+}
+
+.inline-control input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.source-probe {
+  grid-column: span 12;
+  padding: 10px;
+  border: 1px solid rgba(103, 230, 190, 0.24);
+  border-radius: var(--pp-radius2);
+  background: rgba(103, 230, 190, 0.055);
+}
+
+.probe-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.probe-head span,
+.probe-meta {
+  display: block;
+  color: var(--pp-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.probe-meta {
+  margin-top: 6px;
+}
+
+.probe-candidates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.probe-candidate {
+  text-align: left;
+  border: 1px solid rgba(166, 187, 232, 0.14);
+  background: rgba(5, 10, 20, 0.35);
+  color: rgba(255, 255, 255, 0.88);
+  border-radius: 10px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.probe-candidate:hover {
+  border-color: rgba(103, 230, 190, 0.42);
+  background: rgba(103, 230, 190, 0.08);
+}
+
+.probe-candidate strong,
+.probe-candidate span {
+  display: block;
+}
+
+.probe-candidate span {
+  margin-top: 3px;
+  color: var(--pp-muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+@media (max-width: 880px) {
+  .source-guide,
+  .source-wizard,
+  .probe-candidates {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-control,
+  .probe-head {
+    flex-direction: column;
+  }
+
+  .inline-control .btn,
+  .probe-head .btn {
+    width: 100%;
   }
 }

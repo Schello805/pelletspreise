@@ -392,6 +392,7 @@ function openSourceDialog(source) {
   $("src_regex").value = source?.extract?.regex || "";
   $("src_regexAsOf").value = source?.extract?.regexAsOf || "";
   $("src_steps").value = source?.steps ? JSON.stringify(source.steps, null, 2) : "";
+  renderSourceProbe(null);
 
   $("sourceDialog").showModal();
 }
@@ -445,6 +446,50 @@ async function testSourceFromDialog() {
   const query = getQueryFromForm();
   const result = await apiFetch(`/api/sources/test`, { method: "POST", body: JSON.stringify({ source: payload, query }) });
   return result;
+}
+
+function renderSourceProbe(probe) {
+  const host = document.getElementById("sourceProbeResult");
+  if (!host) return;
+  if (!probe) {
+    host.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+
+  const candidates = Array.isArray(probe.candidates) ? probe.candidates : [];
+  host.hidden = false;
+  host.innerHTML = `
+    <div class="probe-head">
+      <div>
+        <strong>Link erreichbar</strong>
+        <span>${escapeHtml(probe.url || "—")}</span>
+      </div>
+      <button class="btn btn-outline-light btn-sm" type="button" data-probe-action="useRegex" data-regex="${escapeAttr(probe.suggestedRegex || "")}">Regex-Vorschlag übernehmen</button>
+    </div>
+    <div class="probe-meta">${escapeHtml(candidates.length ? `${candidates.length} mögliche Preiswerte gefunden.` : "Keine typischen €/t-Werte gefunden. Eventuell braucht diese Seite Playwright oder einen spezifischeren Regex.")}</div>
+    ${
+      candidates.length
+        ? `<div class="probe-candidates">${candidates
+            .map(
+              (candidate) => `
+                <button class="probe-candidate" type="button" data-probe-action="useValueRegex" data-raw="${escapeAttr(candidate.raw || "")}">
+                  <strong>${escapeHtml(fmtNumber(candidate.value))} €/t</strong>
+                  <span>${escapeHtml(candidate.snippet || "")}</span>
+                </button>`,
+            )
+            .join("")}</div>`
+        : ""
+    }
+  `;
+}
+
+async function probeSourceFromDialog() {
+  const url = String(document.getElementById("src_url")?.value || "").trim();
+  if (!url) throw new Error("Bitte zuerst eine URL einfügen.");
+  const query = getQueryFromForm();
+  const data = await apiFetch("/api/sources/probe", { method: "POST", body: JSON.stringify({ url, query }) });
+  return data.probe;
 }
 
 function renderHistory(items) {
@@ -560,6 +605,7 @@ async function refreshSystem() {
 
 function setupTabs() {
   const tabs = Array.from(document.querySelectorAll(".tab"));
+  const jumps = Array.from(document.querySelectorAll("[data-tab-jump]"));
   const panels = {
     query: $("tab-query"),
     sources: $("tab-sources"),
@@ -593,6 +639,21 @@ function setupTabs() {
         await refreshAlerts().catch((e) => toast(e.message, { kind: "error" }));
       }
       if (name === "system") await refreshSystem().catch((e) => toast(e.message || "Diagnose nicht verfügbar", { kind: "error" }));
+    }),
+  );
+
+  jumps.forEach((jump) =>
+    jump.addEventListener("click", async () => {
+      const name = jump.dataset.tabJump;
+      activate(name);
+      if (name === "alarms") {
+        await refreshAlerts().catch((e) => toast(e.message || "Alarme nicht verfügbar", { kind: "error" }));
+        await refreshEmailConfig().catch(() => {});
+      }
+      if (name === "history") {
+        await refreshDailyHistory({ apiFetch, $, state, toast, renderDailyHistory });
+        await refreshHistory().catch((e) => toast(e.message, { kind: "error" }));
+      }
     }),
   );
 }
@@ -992,6 +1053,55 @@ function setupEvents() {
       $("testSourceBtn").disabled = false;
     }
   });
+
+  const probeSourceBtn = document.getElementById("probeSourceBtn");
+  if (probeSourceBtn) {
+    probeSourceBtn.addEventListener("click", async () => {
+      probeSourceBtn.disabled = true;
+      const oldText = probeSourceBtn.textContent;
+      probeSourceBtn.textContent = "Prüfe …";
+      try {
+        const probe = await probeSourceFromDialog();
+        renderSourceProbe(probe);
+        if (!String(document.getElementById("src_name")?.value || "").trim() && probe?.url) {
+          document.getElementById("src_name").value = new URL(probe.url).hostname.replace(/^www\./, "");
+        }
+        toast("Link geprüft. Wähle bei Bedarf einen Regex-Vorschlag.", { kind: "success" });
+      } catch (err) {
+        renderSourceProbe({
+          url: String(document.getElementById("src_url")?.value || ""),
+          candidates: [],
+          suggestedRegex: "",
+        });
+        toast(err.message || "Link konnte nicht geprüft werden.", { kind: "error", timeoutMs: 6200 });
+      } finally {
+        probeSourceBtn.disabled = false;
+        probeSourceBtn.textContent = oldText;
+      }
+    });
+  }
+
+  const sourceProbeResult = document.getElementById("sourceProbeResult");
+  if (sourceProbeResult) {
+    sourceProbeResult.addEventListener("click", (e) => {
+      const btn = e.target?.closest?.("[data-probe-action]");
+      if (!btn) return;
+      const action = btn.dataset.probeAction;
+      const regexInput = document.getElementById("src_regex");
+      if (!regexInput) return;
+      if (action === "useRegex") {
+        regexInput.value = btn.dataset.regex || "(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:/|pro)\\s*(?:t|Tonne)";
+        regexInput.focus();
+        toast("Regex-Vorschlag übernommen. Jetzt „Testen“ drücken.", { kind: "success" });
+      }
+      if (action === "useValueRegex") {
+        const raw = String(btn.dataset.raw || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*");
+        regexInput.value = raw ? `(${raw})` : "(\\d{2,4}(?:[\\.,]\\d{1,2})?)";
+        regexInput.focus();
+        toast("Wert-spezifischer Regex übernommen. Bitte testen.", { kind: "success" });
+      }
+    });
+  }
 
   $("exportSourcesBtn").addEventListener("click", async () => {
     try {

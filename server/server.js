@@ -13,7 +13,7 @@ import { berlinDateKey, berlinHour, patchSettings, readSettings, writeSettings }
 import { evaluateAlerts, patchAlerts, readAlerts, writeAlerts } from "./lib/alerts.js";
 import { getEmailConfig, sendAlertEmail } from "./lib/email.js";
 import { annotatePriceAnomalies } from "./lib/anomaly.js";
-import { jsonResponse, newId, normalizeQuery, readJsonBody, textResponse } from "./lib/util.js";
+import { applyPlaceholders, jsonResponse, newId, normalizeQuery, parseGermanNumber, readJsonBody, textResponse } from "./lib/util.js";
 import { runSource } from "./scrape/runner.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -437,6 +437,78 @@ function contentTypeFor(filePath) {
       ".webmanifest": "application/manifest+json; charset=utf-8",
     }[ext] || "application/octet-stream"
   );
+}
+
+function stripHtmlForSnippet(input) {
+  return String(input || "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildPriceProbe(html) {
+  const text = stripHtmlForSnippet(html).slice(0, 900_000);
+  const euroPattern = /(?:€\s*)?(\d{1,4}(?:[.\s]\d{3})*(?:[,.]\d{1,2})?|\d{1,4})(?:\s*(?:€|EUR))?(?:\s*(?:\/|pro)\s*(?:t|Tonne|1000\s*kg))?/gi;
+  const candidates = [];
+  const seen = new Set();
+  let match;
+  while ((match = euroPattern.exec(text)) && candidates.length < 12) {
+    const raw = match[0].trim();
+    const number = parseGermanNumber(match[1]);
+    if (!Number.isFinite(number) || number < 50 || number > 1500) continue;
+    const key = `${number}:${raw}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const start = Math.max(0, match.index - 90);
+    const end = Math.min(text.length, match.index + raw.length + 90);
+    candidates.push({
+      value: number,
+      raw,
+      snippet: text.slice(start, end).trim(),
+    });
+  }
+
+  return {
+    suggestedRegex: "(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:/|pro)\\s*(?:t|Tonne)",
+    candidates,
+  };
+}
+
+async function probeSourceUrl({ sourceUrl, query }) {
+  const resolved = applyPlaceholders(sourceUrl, query);
+  if (!/^https?:\/\//i.test(resolved) && !resolved.startsWith("/")) throw new Error("Bitte eine HTTP(S)-URL eingeben.");
+  const finalUrl = resolved.startsWith("/") ? `${BASE_URL}${resolved}` : resolved;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 18_000);
+  try {
+    const response = await fetch(finalUrl, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "user-agent": `pelletpreis-checker/${APP_VERSION} (+contact: ${process.env.CONTACT_EMAIL || "info@schellenberger.biz"})`,
+        "accept-language": "de-DE,de;q=0.9,en;q=0.8",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status} beim Prüfen der URL.`);
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("text/html") && !contentType.includes("text/plain") && !contentType.includes("xml")) {
+      throw new Error(`Unerwarteter Inhaltstyp: ${contentType || "unbekannt"}.`);
+    }
+    const html = await response.text();
+    const probe = buildPriceProbe(html);
+    return {
+      url: response.url || finalUrl,
+      bytes: Buffer.byteLength(html, "utf8"),
+      ...probe,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function readCookies(req) {
@@ -1009,6 +1081,15 @@ async function handleApi(req, res, url) {
     const next = sources.filter((s) => s.id !== id);
     await writeSources({ projectRoot, sources: next });
     return jsonResponse(res, 200, { ok: true });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/sources/probe") {
+    const body = (await readJsonBody(req)) || {};
+    const query = normalizeQuery(body.query || {});
+    const sourceUrl = String(body.url || "").trim();
+    if (!sourceUrl) return jsonResponse(res, 400, { error: "URL fehlt." });
+    const probe = await probeSourceUrl({ sourceUrl, query });
+    return jsonResponse(res, 200, { ok: true, probe });
   }
 
   if (req.method === "POST" && url.pathname === "/api/sources/test") {

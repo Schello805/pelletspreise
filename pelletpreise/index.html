@@ -23,9 +23,9 @@
 	        <div class="collapse navbar-collapse" id="ppNavbar">
 	          <div class="navbar-nav me-auto mb-2 mb-lg-0">
 	            <button class="nav-link active tab" type="button" data-tab="query">Abfrage</button>
-	            <button class="nav-link tab" type="button" data-tab="sources">Quellen</button>
-	            <button class="nav-link tab" type="button" data-tab="alarms">Alarme</button>
 	            <button class="nav-link tab" type="button" data-tab="history">Historie</button>
+	            <button class="nav-link tab" type="button" data-tab="alarms">Alarme</button>
+	            <button class="nav-link tab" type="button" data-tab="sources">Quellen</button>
 	            <button class="nav-link tab" type="button" data-tab="system">System</button>
 	          </div>
 	          <div class="d-flex gap-2 align-items-center">
@@ -45,7 +45,11 @@
 	              <h1 class="card-title">Pelletpreise im Blick</h1>
 	              <p class="card-subtitle">Vergleiche lokale Angebote und Marktwerte – transparent, sparsam und mit Historie.</p>
 	            </div>
-	            <div class="hero-orb" aria-hidden="true"></div>
+	            <div class="hero-actions">
+	              <button class="btn btn-outline-light btn-sm" type="button" data-tab-jump="history">Historie ansehen</button>
+	              <button class="btn btn-outline-light btn-sm" type="button" data-tab-jump="alarms">Alarm anlegen</button>
+	              <div class="hero-orb" aria-hidden="true"></div>
+	            </div>
           </div>
 
           <form id="queryForm" class="grid query-grid" autocomplete="on">
@@ -266,7 +270,7 @@
 	                <input class="form-check-input" type="checkbox" role="switch" id="autoDailyEnabled" checked />
 	                <label class="form-check-label muted" for="autoDailyEnabled">Auto 1×/Tag <span id="autoDailyStatus" class="muted"></span></label>
 	              </div>
-	              <button class="btn btn-outline-light btn-sm" type="button" id="addSourceBtn">Quelle hinzufügen</button>
+	              <button class="btn btn-primary btn-sm" type="button" id="addSourceBtn">Quelle geführt anlegen</button>
 	              <button class="btn btn-outline-light btn-sm" type="button" id="exportSourcesBtn">Export</button>
 	              <label class="btn btn-outline-light btn-sm file">
                 Import
@@ -275,6 +279,21 @@
 	              <button class="btn btn-outline-danger btn-sm" type="button" id="resetSourcesBtn" title="Setzt Quellen auf Defaults zurück">Reset</button>
             </div>
           </div>
+
+	          <div class="source-guide">
+	            <div class="source-guide-card">
+	              <span class="guide-step">1</span>
+	              <div><strong>Link einfügen</strong><small>Die Seite wird mit deiner aktuellen PLZ/Menge geprüft.</small></div>
+	            </div>
+	            <div class="source-guide-card">
+	              <span class="guide-step">2</span>
+	              <div><strong>Preis erkennen</strong><small>Der Assistent zeigt gefundene €-Werte und Regex-Vorschläge.</small></div>
+	            </div>
+	            <div class="source-guide-card">
+	              <span class="guide-step">3</span>
+	              <div><strong>Historie & Alarme</strong><small>Definiere, ob die Quelle in Statistik und Alarmen landet.</small></div>
+	            </div>
+	          </div>
 
 	          <div class="table-wrap px-3 pb-3">
 	            <table class="table table-sm table-hover align-middle" aria-label="Quellenliste">
@@ -302,12 +321,18 @@
             <div class="dialog-head">
               <div>
                 <div class="dialog-title" id="sourceDialogTitle">Quelle</div>
-                <div class="dialog-subtitle">Für Formularseiten nutze „Playwright“ (optional).</div>
+                <div class="dialog-subtitle">Geführter Ablauf: Link prüfen, Preis finden, Historie/Alarme aktivieren.</div>
               </div>
               <button class="icon-btn" value="cancel" aria-label="Schließen" type="submit">✕</button>
             </div>
 
-            <div class="dialog-body">
+            <div class="dialog-body source-dialog-body">
+              <div class="source-wizard" aria-label="Quellen-Assistent">
+                <div class="wizard-step is-active"><span>1</span><strong>Link</strong><small>URL einfügen</small></div>
+                <div class="wizard-step"><span>2</span><strong>Parser</strong><small>Preis testen</small></div>
+                <div class="wizard-step"><span>3</span><strong>Nutzung</strong><small>Historie/Alarme</small></div>
+              </div>
+
               <div class="grid two">
                 <label class="field">
                   <span class="label">Name</span>
@@ -344,19 +369,24 @@
 	                  <option value="best">Nur bestes Angebot</option>
 	                  <option value="none">Nicht aufnehmen</option>
 	                </select>
-	                <span class="help">Steuert, was in Historie/Diagramm gespeichert wird.</span>
+	                <span class="help">Wichtig: Nur gespeicherte Historienwerte können später Alarme auslösen.</span>
 	              </label>
 
-              <label class="field">
-                <span class="label">URL</span>
-                <input id="src_url" placeholder="https://... oder mit Platzhaltern {postalCode} {quantityTons} {product}" />
-                <span class="help">Platzhalter werden automatisch ersetzt.</span>
-              </label>
+              <div class="field source-url-field">
+                <label for="src_url" class="label">URL</label>
+                <div class="inline-control">
+                  <input id="src_url" placeholder="https://... oder mit Platzhaltern {postalCode} {quantityTons} {product}" />
+                  <button class="btn btn-outline-light btn-sm" type="button" id="probeSourceBtn">Link prüfen</button>
+                </div>
+                <span class="help">Platzhalter werden automatisch ersetzt. Beispiel: <code>{postalCode}</code>, <code>{quantityKg}</code>.</span>
+              </div>
+
+              <div id="sourceProbeResult" class="source-probe" hidden></div>
 
               <label class="field">
                 <span class="label">Regex (Preis)</span>
                 <input id="src_regex" placeholder="z. B. (\\d+[\\.,]\\d+)\\s*€\\s*/\\s*t" />
-                <span class="help">Erste Capture-Group wird als Zahl geparst (Komma/ نقط/ Punkt).</span>
+                <span class="help">Erste Capture-Group wird als Zahl geparst. Tipp: Erst „Link prüfen“, dann Vorschlag übernehmen.</span>
               </label>
 
               <label class="field">
