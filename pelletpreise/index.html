@@ -329,8 +329,16 @@
             <div class="dialog-body source-dialog-body">
               <div class="source-wizard" aria-label="Quellen-Assistent">
                 <div class="wizard-step is-active"><span>1</span><strong>Link</strong><small>URL einfügen</small></div>
-                <div class="wizard-step"><span>2</span><strong>Parser</strong><small>Preis testen</small></div>
+                <div class="wizard-step"><span>2</span><strong>Preis</strong><small>Fund auswählen</small></div>
                 <div class="wizard-step"><span>3</span><strong>Nutzung</strong><small>Historie/Alarme</small></div>
+              </div>
+
+              <div class="source-assistant-card">
+                <div>
+                  <strong>Geführtes Parsing</strong>
+                  <span>Füge zuerst den Link ein. Mit „Testen & Preise suchen“ lädt die App die Seite, zeigt mögliche Preise und validiert deine Auswahl.</span>
+                </div>
+                <button class="btn btn-primary btn-sm" type="button" id="probeSourceBtnTop">Testen & Preise suchen</button>
               </div>
 
               <div class="grid two">
@@ -376,12 +384,13 @@
                 <label for="src_url" class="label">URL</label>
                 <div class="inline-control">
                   <input id="src_url" placeholder="https://... oder mit Platzhaltern {postalCode} {quantityTons} {product}" />
-                  <button class="btn btn-outline-light btn-sm" type="button" id="probeSourceBtn">Link prüfen</button>
+                  <button class="btn btn-outline-light btn-sm" type="button" id="probeSourceBtn">Testen</button>
                 </div>
                 <span class="help">Platzhalter werden automatisch ersetzt. Beispiel: <code>{postalCode}</code>, <code>{quantityKg}</code>.</span>
               </div>
 
               <div id="sourceProbeResult" class="source-probe" hidden></div>
+              <div id="sourceParserResult" class="source-parser-result" hidden></div>
 
               <label class="field">
                 <span class="label">Regex (Preis)</span>
@@ -407,7 +416,7 @@
 
             <div class="dialog-foot">
               <div class="left">
-	                <button class="btn btn-outline-light btn-sm" type="button" id="testSourceBtn">Testen</button>
+	                <button class="btn btn-outline-light btn-sm" type="button" id="testSourceBtn">Parser testen</button>
               </div>
               <div class="right">
 	                <button class="btn btn-outline-light btn-sm" value="cancel" type="submit">Abbrechen</button>

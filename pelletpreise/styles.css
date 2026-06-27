@@ -1317,6 +1317,29 @@ textarea {
   gap: 8px;
 }
 
+.source-assistant-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(103, 230, 190, 0.24);
+  border-radius: var(--pp-radius2);
+  background: linear-gradient(135deg, rgba(103, 230, 190, 0.12), rgba(77, 171, 247, 0.06));
+}
+
+.source-assistant-card strong,
+.source-assistant-card span {
+  display: block;
+}
+
+.source-assistant-card span {
+  margin-top: 3px;
+  color: var(--pp-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
 .wizard-step {
   display: flex;
   gap: 8px;
@@ -1402,13 +1425,30 @@ textarea {
   cursor: pointer;
 }
 
-.probe-candidate:hover {
+.probe-candidate:hover,
+.probe-candidate.is-selected {
   border-color: rgba(103, 230, 190, 0.42);
   background: rgba(103, 230, 190, 0.08);
 }
 
+.probe-candidate.is-selected {
+  box-shadow: inset 0 0 0 1px rgba(103, 230, 190, 0.32);
+}
+
+.probe-candidate em {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--pp-accent);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .probe-candidate strong,
-.probe-candidate span {
+.probe-candidate span,
+.probe-candidate small {
   display: block;
 }
 
@@ -1419,6 +1459,46 @@ textarea {
   line-height: 1.25;
 }
 
+.probe-candidate small {
+  margin-top: 7px;
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 900;
+}
+
+.source-parser-result {
+  grid-column: span 12;
+  padding: 10px 12px;
+  border: 1px solid rgba(166, 187, 232, 0.16);
+  border-radius: var(--pp-radius2);
+  background: rgba(5, 10, 20, 0.34);
+}
+
+.source-parser-result strong,
+.source-parser-result span {
+  display: block;
+}
+
+.source-parser-result span {
+  margin-top: 3px;
+  color: var(--pp-muted);
+  font-size: 12px;
+}
+
+.source-parser-result.is-ok {
+  border-color: rgba(103, 230, 190, 0.38);
+  background: rgba(103, 230, 190, 0.075);
+}
+
+.source-parser-result.is-error {
+  border-color: rgba(255, 107, 107, 0.38);
+  background: rgba(255, 107, 107, 0.07);
+}
+
+.source-parser-result.is-pending {
+  border-color: rgba(255, 212, 59, 0.34);
+  background: rgba(255, 212, 59, 0.055);
+}
+
 @media (max-width: 880px) {
   .source-guide,
   .source-wizard,
@@ -1427,12 +1507,15 @@ textarea {
   }
 
   .inline-control,
-  .probe-head {
+  .probe-head,
+  .source-assistant-card {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .inline-control .btn,
-  .probe-head .btn {
+  .probe-head .btn,
+  .source-assistant-card .btn {
     width: 100%;
   }
 }
