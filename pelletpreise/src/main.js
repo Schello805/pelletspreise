@@ -1059,6 +1059,10 @@ function setupEvents() {
 
   $("addSourceBtn").addEventListener("click", () => openSourceDialog({ enabled: true, kind: "http-regex" }));
 
+  const closeSourceDialog = () => $("sourceDialog").close();
+  document.getElementById("closeSourceDialogBtn")?.addEventListener("click", closeSourceDialog);
+  document.getElementById("cancelSourceDialogBtn")?.addEventListener("click", closeSourceDialog);
+
   $("sourceForm").addEventListener("submit", async (e) => {
     const submitter = e.submitter;
     if (!submitter) return;

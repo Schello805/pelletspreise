@@ -323,7 +323,7 @@
                 <div class="dialog-title" id="sourceDialogTitle">Quelle</div>
                 <div class="dialog-subtitle">Geführter Ablauf: Link prüfen, Preis finden, Historie/Alarme aktivieren.</div>
               </div>
-              <button class="icon-btn" value="cancel" aria-label="Schließen" type="submit">✕</button>
+              <button class="icon-btn" id="closeSourceDialogBtn" aria-label="Schließen" type="button">✕</button>
             </div>
 
             <div class="dialog-body source-dialog-body">
@@ -355,30 +355,30 @@
                 </label>
               </div>
 
-	              <label class="field">
-	                <span class="label">Typ</span>
-	                <select id="src_kind">
-	                  <option value="http-regex">HTTP + Regex (einfach)</option>
-	                  <option value="playwright">Playwright (Formulare/JS)</option>
-	                </select>
-	                <span class="help">HTTP+Regex funktioniert gut, wenn der Preis im HTML steht. Playwright kann Felder ausfüllen und klicken.</span>
-	              </label>
+              <label class="field source-field">
+                <span class="label">Typ</span>
+                <select id="src_kind">
+                  <option value="http-regex">HTTP + Regex (einfach)</option>
+                  <option value="playwright">Playwright (Formulare/JS)</option>
+                </select>
+                <span class="help">HTTP+Regex funktioniert gut, wenn der Preis im HTML steht. Playwright kann Felder ausfüllen und klicken.</span>
+              </label>
 
-	              <label class="field">
-	                <span class="label">Cache (Stunden)</span>
-	                <input id="src_cacheHours" type="number" min="0.25" max="168" step="0.25" placeholder="z. B. 12" />
-	                <span class="help">Optional: Wenn gesetzt, wird das Ergebnis pro Quelle so lange wiederverwendet (spart Abfragen).</span>
-	              </label>
+              <label class="field source-field">
+                <span class="label">Cache (Stunden)</span>
+                <input id="src_cacheHours" type="number" min="0.25" max="168" step="0.25" placeholder="z. B. 12" />
+                <span class="help">Optional: Wenn gesetzt, wird das Ergebnis pro Quelle so lange wiederverwendet (spart Abfragen).</span>
+              </label>
 
-	              <label class="field">
-	                <span class="label">Statistik</span>
-	                <select id="src_historyMode">
-	                  <option value="auto">Auto (wie bisher)</option>
-	                  <option value="best">Nur bestes Angebot</option>
-	                  <option value="none">Nicht aufnehmen</option>
-	                </select>
-	                <span class="help">Wichtig: Nur gespeicherte Historienwerte können später Alarme auslösen.</span>
-	              </label>
+              <label class="field source-field">
+                <span class="label">Statistik</span>
+                <select id="src_historyMode">
+                  <option value="auto">Auto (wie bisher)</option>
+                  <option value="best">Nur bestes Angebot</option>
+                  <option value="none">Nicht aufnehmen</option>
+                </select>
+                <span class="help">Wichtig: Nur gespeicherte Historienwerte können später Alarme auslösen.</span>
+              </label>
 
               <div class="field source-url-field">
                 <label for="src_url" class="label">URL</label>
@@ -392,19 +392,19 @@
               <div id="sourceProbeResult" class="source-probe" hidden></div>
               <div id="sourceParserResult" class="source-parser-result" hidden></div>
 
-              <label class="field">
+              <label class="field source-field source-field-wide">
                 <span class="label">Regex (Preis)</span>
                 <input id="src_regex" placeholder="z. B. (\\d+[\\.,]\\d+)\\s*€\\s*/\\s*t" />
                 <span class="help">Erste Capture-Group wird als Zahl geparst. Tipp: Erst „Link prüfen“, dann Vorschlag übernehmen.</span>
               </label>
 
-              <label class="field">
+              <label class="field source-field">
                 <span class="label">Regex (Stand)</span>
                 <input id="src_regexAsOf" placeholder="optional, z. B. (\\d{2}\\.\\d{2}\\.\\d{2})\\s*\\|\\s*(\\d{2}:\\d{2})" />
                 <span class="help">Optional: Datum/Uhrzeit-Stand. Wenn 2 Gruppen vorhanden sind, wird „Datum Uhrzeit“ angezeigt.</span>
               </label>
 
-              <label class="field">
+              <label class="field source-field source-field-full">
                 <span class="label">Playwright Schritte (JSON)</span>
                 <textarea id="src_steps" rows="7" placeholder='[{"action":"goto","url":"https://..."},{"action":"fill","selector":"#plz","value":"{postalCode}"},{"action":"fill","selector":"#qty","value":"{quantityTons}"},{"action":"click","selector":"button[type=submit]"},{"action":"waitForSelector","selector":".price"}]'></textarea>
                 <div class="help row">
@@ -419,7 +419,7 @@
 	                <button class="btn btn-outline-light btn-sm" type="button" id="testSourceBtn">Parser testen</button>
               </div>
               <div class="right">
-	                <button class="btn btn-outline-light btn-sm" value="cancel" type="submit">Abbrechen</button>
+		                <button class="btn btn-outline-light btn-sm" id="cancelSourceDialogBtn" type="button">Abbrechen</button>
 	                <button class="btn btn-primary btn-sm" value="save" type="submit" id="saveSourceBtn">Speichern</button>
               </div>
             </div>
