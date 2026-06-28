@@ -121,6 +121,17 @@ function toFormUrlEncoded(obj) {
   return params.toString();
 }
 
+function stripHtmlForRegex(input) {
+  return String(input || "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function scrapeHolzpelletsNetBestOffer({ query }) {
   const base = "https://www.holzpellets.net";
   const produktTyp = query.product === "ENPLUS_A1_SACK" ? "2" : "1";
@@ -511,7 +522,7 @@ async function scrapeHttpRegex({ source, query, baseUrl }) {
 
   const re = parseRegexInput(source?.extract?.regex);
   if (!re) throw new Error("Regex fehlt.");
-  const m = html.match(re);
+  const m = html.match(re) || stripHtmlForRegex(html).match(re);
   if (!m) throw new Error("Preis nicht gefunden (Regex passt nicht).");
 
   const priceEurPerTon = parseGermanNumber(m[1] ?? m[0]);
@@ -520,7 +531,7 @@ async function scrapeHttpRegex({ source, query, baseUrl }) {
   let asOf = null;
   if (source?.extract?.regexAsOf) {
     const reAsOf = parseRegexInput(source.extract.regexAsOf);
-    const m2 = reAsOf ? html.match(reAsOf) : null;
+    const m2 = reAsOf ? html.match(reAsOf) || stripHtmlForRegex(html).match(reAsOf) : null;
     if (m2) {
       if (m2[1] && m2[2]) asOf = `${String(m2[1]).trim()} ${String(m2[2]).trim()}`;
       else asOf = String(m2[1] ?? m2[0]).trim();
@@ -530,7 +541,7 @@ async function scrapeHttpRegex({ source, query, baseUrl }) {
   let totalEur = null;
   if (source?.extract?.regexTotal) {
     const reTotal = parseRegexInput(source.extract.regexTotal);
-    const mt = reTotal ? html.match(reTotal) : null;
+    const mt = reTotal ? html.match(reTotal) || stripHtmlForRegex(html).match(reTotal) : null;
     if (mt) totalEur = parseGermanNumber(mt[1] ?? mt[0]);
   }
 
@@ -600,7 +611,7 @@ async function scrapePlaywright({ source, query, baseUrl, sharedBrowser }) {
     const html = await page.content();
     const re = parseRegexInput(source?.extract?.regex);
     if (!re) throw new Error("Regex fehlt.");
-    const m = html.match(re);
+    const m = html.match(re) || stripHtmlForRegex(html).match(re);
     if (!m) throw new Error("Preis nicht gefunden (Regex passt nicht).");
 
     const priceEurPerTon = parseGermanNumber(m[1] ?? m[0]);
@@ -609,7 +620,7 @@ async function scrapePlaywright({ source, query, baseUrl, sharedBrowser }) {
     let asOf = null;
     if (source?.extract?.regexAsOf) {
       const reAsOf = parseRegexInput(source.extract.regexAsOf);
-      const m2 = reAsOf ? html.match(reAsOf) : null;
+      const m2 = reAsOf ? html.match(reAsOf) || stripHtmlForRegex(html).match(reAsOf) : null;
       if (m2) {
         if (m2[1] && m2[2]) asOf = `${String(m2[1]).trim()} ${String(m2[2]).trim()}`;
         else asOf = String(m2[1] ?? m2[0]).trim();
@@ -619,7 +630,7 @@ async function scrapePlaywright({ source, query, baseUrl, sharedBrowser }) {
     let totalEur = null;
     if (source?.extract?.regexTotal) {
       const reTotal = parseRegexInput(source.extract.regexTotal);
-      const mt = reTotal ? html.match(reTotal) : null;
+      const mt = reTotal ? html.match(reTotal) || stripHtmlForRegex(html).match(reTotal) : null;
       if (mt) totalEur = parseGermanNumber(mt[1] ?? mt[0]);
     }
 

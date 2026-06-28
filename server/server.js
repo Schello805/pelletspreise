@@ -452,29 +452,43 @@ function stripHtmlForSnippet(input) {
 
 function buildPriceProbe(html) {
   const text = stripHtmlForSnippet(html).slice(0, 900_000);
-  const euroPattern = /(?:€\s*)?(\d{1,4}(?:[.\s]\d{3})*(?:[,.]\d{1,2})?|\d{1,4})(?:\s*(?:€|EUR))?(?:\s*(?:\/|pro)\s*(?:t|Tonne|1000\s*kg))?/gi;
+  const euroPattern =
+    /(?:(?:€|EUR)\s*(\d{1,4}(?:[.\s]\d{3})*(?:[,.]\d{1,2})?|\d{1,4})|(\d{1,4}(?:[.\s]\d{3})*(?:[,.]\d{1,2})?|\d{1,4})\s*(?:€|EUR))(?:\s*(?:\/|pro|je)\s*(?:Tonne|1000\s*kg|t))?/gi;
   const candidates = [];
   const seen = new Set();
   let match;
-  while ((match = euroPattern.exec(text)) && candidates.length < 12) {
+  while ((match = euroPattern.exec(text))) {
     const raw = match[0].trim();
-    const number = parseGermanNumber(match[1]);
+    const numberText = match[1] || match[2] || "";
+    const number = parseGermanNumber(numberText);
     if (!Number.isFinite(number) || number < 50 || number > 1500) continue;
-    const key = `${number}:${raw}`;
+    const start = Math.max(0, match.index - 110);
+    const end = Math.min(text.length, match.index + raw.length + 110);
+    const snippet = text.slice(start, end).trim();
+    const context = snippet.toLowerCase();
+    let score = 0;
+    if (/(?:\/|pro|je)\s*(?:t|tonne|1000\s*kg)|€\s*\/\s*t|€\/t/.test(context)) score += 80;
+    if (/pelletspreis|preis\s*(?:pro|je)\s*tonne|holzpellets?\s*lose/.test(context)) score += 45;
+    if (/gesamtpreis|gesamt|inkl\.?\s*mwst|transport|zuschlag|pauschale|einblas|gutschein|versand|telefon|kontakt|liefer-?\s*und/.test(context)) score -= 85;
+    if (number >= 200 && number <= 700) score += 25;
+    if (number > 900) score -= 35;
+    const key = `${number}:${raw}:${snippet}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const start = Math.max(0, match.index - 90);
-    const end = Math.min(text.length, match.index + raw.length + 90);
     candidates.push({
       value: number,
       raw,
-      snippet: text.slice(start, end).trim(),
+      snippet,
+      score,
+      reason: score >= 80 ? "starker €/t-Kontext" : score >= 30 ? "passender Preis-Kontext" : "prüfen",
+      regex: `(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:\\/|pro|je)\\s*(?:Tonne|1000\\s*kg|t)`,
     });
   }
+  candidates.sort((a, b) => b.score - a.score || a.value - b.value);
 
   return {
-    suggestedRegex: "(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:/|pro)\\s*(?:t|Tonne)",
-    candidates,
+    suggestedRegex: "(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:/|pro|je)\\s*(?:Tonne|1000\\s*kg|t)",
+    candidates: candidates.slice(0, 12),
   };
 }
 
@@ -500,7 +514,24 @@ async function probeSourceUrl({ sourceUrl, query }) {
       throw new Error(`Unerwarteter Inhaltstyp: ${contentType || "unbekannt"}.`);
     }
     const html = await response.text();
-    const probe = buildPriceProbe(html);
+    let probe = buildPriceProbe(html);
+    if (!probe.candidates.length) {
+      try {
+        const playwright = await import("playwright");
+        const browser = await playwright.chromium.launch({ headless: true });
+        try {
+          const page = await browser.newPage({ locale: "de-DE" });
+          await page.goto(finalUrl, { waitUntil: "networkidle", timeout: 18_000 });
+          const rendered = await page.content();
+          const renderedProbe = buildPriceProbe(rendered);
+          if (renderedProbe.candidates.length) probe = { ...renderedProbe, rendered: true };
+        } finally {
+          await browser.close().catch(() => {});
+        }
+      } catch {
+        // Optional fallback only; HTTP probe result remains valid.
+      }
+    }
     return {
       url: response.url || finalUrl,
       bytes: Buffer.byteLength(html, "utf8"),

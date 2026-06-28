@@ -326,7 +326,7 @@
               <button class="icon-btn" id="closeSourceDialogBtn" aria-label="Schließen" type="button">✕</button>
             </div>
 
-            <div class="dialog-body source-dialog-body">
+            <div class="dialog-body source-dialog-body" id="sourceDialogBody" data-flow-step="link">
               <div class="source-guide-panel" aria-label="Quellen-Assistent">
                 <div class="source-wizard">
                   <div class="wizard-step is-active"><span>1</span><strong>Link</strong><small>URL einfügen</small></div>
@@ -342,12 +342,12 @@
                 </div>
               </div>
 
-              <div class="source-form-grid">
+              <div class="source-form-grid" data-source-step="price usage">
                 <label class="field">
                   <span class="label">Name</span>
                   <input id="src_name" required placeholder="z. B. Händler XY" />
                 </label>
-                <label class="field">
+                <label class="field" data-source-step="usage">
                   <span class="label">Aktiv</span>
                   <select id="src_enabled">
                     <option value="true">Ja</option>
@@ -364,13 +364,13 @@
                   <span class="help">HTTP+Regex für HTML-Preise. Playwright für Formulare und JS-Seiten.</span>
                 </label>
 
-                <label class="field">
+                <label class="field" data-source-step="usage">
                   <span class="label">Cache (Stunden)</span>
                   <input id="src_cacheHours" type="number" min="0.25" max="168" step="0.25" placeholder="z. B. 12" />
                   <span class="help">Optional: Ergebnis pro Quelle wiederverwenden.</span>
                 </label>
 
-                <label class="field source-field-wide">
+                <label class="field source-field-wide" data-source-step="usage">
                   <span class="label">Statistik</span>
                   <select id="src_historyMode">
                     <option value="auto">Auto (wie bisher)</option>
@@ -381,7 +381,7 @@
                 </label>
               </div>
 
-              <div class="field source-url-field">
+              <div class="field source-url-field" data-source-step="link price usage">
                 <label for="src_url" class="label">URL</label>
                 <div class="inline-control">
                   <input id="src_url" placeholder="https://... oder mit Platzhaltern {postalCode} {quantityTons} {product}" />
@@ -390,22 +390,22 @@
                 <span class="help">Platzhalter werden automatisch ersetzt. Beispiel: <code>{postalCode}</code>, <code>{quantityKg}</code>.</span>
               </div>
 
-              <div id="sourceProbeResult" class="source-probe" hidden></div>
-              <div id="sourceParserResult" class="source-parser-result" hidden></div>
+              <div id="sourceProbeResult" class="source-probe" data-source-step="price usage" hidden></div>
+              <div id="sourceParserResult" class="source-parser-result" data-source-step="usage" hidden></div>
 
-              <label class="field source-field-wide">
+              <label class="field source-field-wide" data-source-step="price usage" data-advanced-field="regex">
                 <span class="label">Regex (Preis)</span>
                 <input id="src_regex" placeholder="z. B. (\\d+[\\.,]\\d+)\\s*€\\s*/\\s*t" />
                 <span class="help">Erste Capture-Group wird als Zahl geparst. Tipp: Erst „Link prüfen“, dann Vorschlag übernehmen.</span>
               </label>
 
-              <label class="field">
+              <label class="field" data-source-step="usage" data-advanced-field="regex">
                 <span class="label">Regex (Stand)</span>
                 <input id="src_regexAsOf" placeholder="optional, z. B. (\\d{2}\\.\\d{2}\\.\\d{2})\\s*\\|\\s*(\\d{2}:\\d{2})" />
                 <span class="help">Optional: Datum/Uhrzeit-Stand. Wenn 2 Gruppen vorhanden sind, wird „Datum Uhrzeit“ angezeigt.</span>
               </label>
 
-              <label class="field source-field source-field-full">
+              <label class="field source-field source-field-full" data-source-step="usage" data-kind-field="playwright">
                 <span class="label">Playwright Schritte (JSON)</span>
                 <textarea id="src_steps" rows="7" placeholder='[{"action":"goto","url":"https://..."},{"action":"fill","selector":"#plz","value":"{postalCode}"},{"action":"fill","selector":"#qty","value":"{quantityTons}"},{"action":"click","selector":"button[type=submit]"},{"action":"waitForSelector","selector":".price"}]'></textarea>
                 <div class="help row">

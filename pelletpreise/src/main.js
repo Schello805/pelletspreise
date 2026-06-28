@@ -85,6 +85,7 @@ const state = {
   email: null,
   scrapeStatus: null,
   update: null,
+  sourceFlowStep: "link",
 };
 
 let authenticatedAppInitialized = false;
@@ -393,8 +394,35 @@ function openSourceDialog(source) {
   $("src_regexAsOf").value = source?.extract?.regexAsOf || "";
   $("src_steps").value = source?.steps ? JSON.stringify(source.steps, null, 2) : "";
   renderSourceProbe(null);
+  setSourceFlowStep(source?.id ? "usage" : "link");
 
   $("sourceDialog").showModal();
+}
+
+function setSourceFlowStep(step) {
+  const next = ["link", "price", "usage"].includes(step) ? step : "link";
+  state.sourceFlowStep = next;
+  const body = document.getElementById("sourceDialogBody");
+  if (body) body.dataset.flowStep = next;
+  document.querySelectorAll("#sourceDialog [data-source-step]").forEach((el) => {
+    const steps = String(el.getAttribute("data-source-step") || "").split(/\s+/).filter(Boolean);
+    el.hidden = !steps.includes(next);
+  });
+  const kind = String(document.getElementById("src_kind")?.value || "http-regex");
+  document.querySelectorAll("#sourceDialog [data-kind-field]").forEach((el) => {
+    el.hidden = el.hidden || String(el.getAttribute("data-kind-field")) !== kind;
+  });
+  document.querySelectorAll("#sourceDialog .wizard-step").forEach((el, index) => {
+    el.classList.toggle("is-active", index === { link: 0, price: 1, usage: 2 }[next]);
+    el.classList.toggle("is-done", index < { link: 0, price: 1, usage: 2 }[next]);
+  });
+  const saveBtn = document.getElementById("saveSourceBtn");
+  if (saveBtn) {
+    saveBtn.hidden = next !== "usage";
+    saveBtn.disabled = next !== "usage";
+  }
+  const testBtn = document.getElementById("testSourceBtn");
+  if (testBtn) testBtn.hidden = next === "link";
 }
 
 function getSourceFromDialog() {
@@ -455,10 +483,12 @@ function renderSourceProbe(probe) {
     host.hidden = true;
     host.innerHTML = "";
     renderSourceParserResult(null);
+    if (!state.editingSourceId) setSourceFlowStep("link");
     return;
   }
 
   const candidates = Array.isArray(probe.candidates) ? probe.candidates : [];
+  setSourceFlowStep("price");
   host.hidden = false;
   host.innerHTML = `
     <div class="probe-head">
@@ -468,17 +498,21 @@ function renderSourceProbe(probe) {
       </div>
       <button class="btn btn-outline-light btn-sm" type="button" data-probe-action="useRegex" data-regex="${escapeAttr(probe.suggestedRegex || "")}">Allgemeinen Regex übernehmen</button>
     </div>
-    <div class="probe-meta">${escapeHtml(candidates.length ? `2. ${candidates.length} mögliche Preiswerte gefunden. Klicke den gewünschten Zielpreis an.` : "Keine typischen €/t-Werte gefunden. Eventuell braucht diese Seite Playwright oder einen spezifischeren Regex.")}</div>
+    <div class="probe-meta">${escapeHtml(
+      candidates.length
+        ? `2. ${candidates.length} mögliche Preiswerte gefunden${probe.rendered ? " (per Browser-Rendering)" : ""}. Klicke den gewünschten Zielpreis an.`
+        : "Keine typischen €/t-Werte gefunden. Eventuell braucht diese Seite Playwright oder einen spezifischeren Regex.",
+    )}</div>
     ${
       candidates.length
         ? `<div class="probe-candidates">${candidates
             .map(
               (candidate, index) => `
-                <button class="probe-candidate" type="button" data-probe-action="choosePrice" data-index="${index}" data-value="${escapeAttr(String(candidate.value ?? ""))}" data-raw="${escapeAttr(candidate.raw || "")}">
+                <button class="probe-candidate" type="button" data-probe-action="choosePrice" data-index="${index}" data-value="${escapeAttr(String(candidate.value ?? ""))}" data-raw="${escapeAttr(candidate.raw || "")}" data-regex="${escapeAttr(candidate.regex || probe.suggestedRegex || "")}">
                   <em>Preis ${index + 1}</em>
                   <strong>${escapeHtml(fmtNumber(candidate.value))} €/t</strong>
                   <span>${escapeHtml(candidate.snippet || "")}</span>
-                  <small>Diesen Preis verwenden</small>
+                  <small>${escapeHtml(candidate.reason || "Diesen Preis verwenden")}</small>
                 </button>`,
             )
             .join("")}</div>`
@@ -497,11 +531,13 @@ function renderSourceParserResult(result, { pending = false, selectedValue = nul
   }
   host.hidden = false;
   if (pending) {
+    setSourceFlowStep("usage");
     host.className = "source-parser-result is-pending";
     host.innerHTML = `<strong>3. Parser wird validiert …</strong><span>Die Quelle wird mit dem gewählten Preis-Regelwerk getestet.</span>`;
     return;
   }
   if (result?.ok) {
+    setSourceFlowStep("usage");
     host.className = "source-parser-result is-ok";
     const parsed = result.priceEurPerTon != null ? `${fmtNumber(result.priceEurPerTon)} €/t` : "—";
     const expected = selectedValue != null ? `${fmtNumber(Number(selectedValue))} €/t` : "";
@@ -521,6 +557,8 @@ async function probeSourceFromDialog() {
 }
 
 function regexForRawPrice(raw) {
+  const number = String(raw || "").match(/\d{1,4}(?:[.,]\d{1,2})?/);
+  if (number) return `(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:\\/|pro|je)\\s*(?:Tonne|1000\\s*kg|t)`;
   const escaped = String(raw || "")
     .trim()
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -1111,6 +1149,22 @@ function setupEvents() {
       try {
         const probe = await probeSourceFromDialog();
         renderSourceProbe(probe);
+        if (probe?.rendered) {
+          const kindEl = document.getElementById("src_kind");
+          const stepsEl = document.getElementById("src_steps");
+          if (kindEl) kindEl.value = "playwright";
+          if (stepsEl && !String(stepsEl.value || "").trim()) {
+            stepsEl.value = JSON.stringify(
+              [
+                { action: "goto", url: "{url}" },
+                { action: "waitForTimeout", timeoutMs: 1200 },
+              ],
+              null,
+              2,
+            );
+          }
+          setSourceFlowStep("price");
+        }
         if (!String(document.getElementById("src_name")?.value || "").trim() && probe?.url) {
           document.getElementById("src_name").value = new URL(probe.url).hostname.replace(/^www\./, "");
         }
@@ -1144,14 +1198,15 @@ function setupEvents() {
       const regexInput = document.getElementById("src_regex");
       if (!regexInput) return;
       if (action === "useRegex") {
-        regexInput.value = btn.dataset.regex || "(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:/|pro)\\s*(?:t|Tonne)";
+        regexInput.value = btn.dataset.regex || "(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:/|pro)\\s*(?:Tonne|t)";
         regexInput.focus();
+        setSourceFlowStep("usage");
         toast("Regex-Vorschlag übernommen. Jetzt „Testen“ drücken.", { kind: "success" });
       }
       if (action === "choosePrice") {
         sourceProbeResult.querySelectorAll(".probe-candidate").forEach((el) => el.classList.remove("is-selected"));
         btn.classList.add("is-selected");
-        regexInput.value = regexForRawPrice(btn.dataset.raw || "");
+        regexInput.value = btn.dataset.regex || regexForRawPrice(btn.dataset.raw || "");
         renderSourceParserResult(null, { pending: true, selectedValue: btn.dataset.value });
         try {
           const data = await testSourceFromDialog();
@@ -1168,6 +1223,11 @@ function setupEvents() {
       }
     });
   }
+
+  document.getElementById("src_kind")?.addEventListener("change", () => setSourceFlowStep(state.sourceFlowStep));
+  document.getElementById("src_url")?.addEventListener("input", () => {
+    if (!String(document.getElementById("src_url")?.value || "").trim()) renderSourceProbe(null);
+  });
 
   $("exportSourcesBtn").addEventListener("click", async () => {
     try {

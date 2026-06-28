@@ -1410,6 +1410,16 @@ textarea {
   color: rgba(255, 255, 255, 0.82);
 }
 
+.wizard-step.is-done {
+  border-color: rgba(103, 230, 190, 0.28);
+  background: rgba(103, 230, 190, 0.055);
+}
+
+.wizard-step.is-done span {
+  background: rgba(103, 230, 190, 0.88);
+  color: #071b15;
+}
+
 .wizard-step strong,
 .wizard-step small {
   display: block;
