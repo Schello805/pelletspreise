@@ -54,6 +54,9 @@ function normalizeExtract(ex) {
 }
 
 function statusCellHtml(result) {
+  if (isRateLimitedResult(result)) {
+    return `<span class="status warn" title="${escapeAttr(String(result.error || "Abruflimit aktiv."))}">Wartet</span>`;
+  }
   if (result?.ok && result?.anomaly) {
     const a = result.anomaly;
     const direction = a.type === "unusually_low" ? "auffällig niedrig" : "auffällig hoch";
@@ -63,6 +66,19 @@ function statusCellHtml(result) {
   if (result?.ok) return `<span class="status ok">OK</span>`;
   const msg = result?.error ? escapeHtml(String(result.error)) : "Fehler";
   return `<span class="status err">${msg}</span>`;
+}
+
+function isRateLimitedResult(result) {
+  const error = String(result?.error || "");
+  return Boolean(result?.rateLimited || /heute lief bereits|nächste.*erlaubt|10h|10 h|abstand|rate.?limit/i.test(error));
+}
+
+function rateLimitHint(meta = {}) {
+  const info = meta?.rateLimit || {};
+  const next = info?.details?.nextAllowedAt || info?.nextAllowedAt || null;
+  if (next) return `Nächster echter Abruf: ${fmtTime(next)}`;
+  if (info?.error) return String(info.error);
+  return "Abruflimit aktiv – vorhandene Cachewerte bleiben sichtbar.";
 }
 
 function isAverageResult(r) {
@@ -165,7 +181,7 @@ async function refreshScrapeStatus() {
   return data;
 }
 
-function renderOverview({ query, avgResults, offerRows }) {
+function renderOverview({ query, avgResults, offerRows, meta = {} }) {
   const host = document.getElementById("overviewCards");
   if (!host) return;
 
@@ -174,6 +190,7 @@ function renderOverview({ query, avgResults, offerRows }) {
     .slice()
     .sort((a, b) => a.priceEurPerTon - b.priceEurPerTon);
   const bestAvg = avg[0] || null;
+  const avgLimited = avgResults.some(isRateLimitedResult);
 
   const offers = (offerRows || [])
     .filter((r) => typeof r.totalEur === "number" || typeof r.priceEurPerTon === "number")
@@ -228,7 +245,7 @@ function renderOverview({ query, avgResults, offerRows }) {
       <div class="overview-title">Marktwert · günstigste Quelle</div>
       <div class="overview-value">${bestAvg ? safe(fmtPerTon(bestAvg.priceEurPerTon)).replace("€ / t", "€") : "—"}</div>
       <div class="overview-meta">
-        ${bestAvg ? `${safe(bestAvg.sourceName || bestAvg.sourceId)}<br/>Stand: ${safe(bestAvg.asOf || "—")}` : "—"}
+        ${bestAvg ? `${safe(bestAvg.sourceName || bestAvg.sourceId)}<br/>Stand: ${safe(bestAvg.asOf || "—")}` : avgLimited ? `Heute nicht frisch abgefragt<br/>${safe(rateLimitHint(meta))}` : "Noch kein Marktwert verfügbar"}
       </div>
       <div class="overview-actions">
         ${bestAvg && bestAvg.url ? `<a class="btn btn-sm btn-outline-light" href="${escapeAttr(bestAvg.url)}" target="_blank" rel="noopener noreferrer">Quelle öffnen</a>` : ""}
@@ -263,7 +280,7 @@ function renderResults({ query, results, meta = {} }) {
   const limited = meta?.rateLimited ? " · Cache/Limit aktiv" : "";
   metaEl.textContent = `PLZ ${query.postalCode} · ${fmtNumber(query.quantityTons)} t · ${mapProductLabel(query.product)} · Ø ${avgResults.length} · Angebote ${state.lastOffersRows.length}${limited}`;
 
-  renderOverview({ query, avgResults, offerRows: state.lastOffersRows });
+  renderOverview({ query, avgResults, offerRows: state.lastOffersRows, meta });
 
   if (!results.length) {
     avgBody.innerHTML = `<tr><td colspan="6" class="muted">Keine Ergebnisse (sind Quellen aktiv?).</td></tr>`;
@@ -278,12 +295,14 @@ function renderResults({ query, results, meta = {} }) {
           const total = r.totalEur != null ? fmtMoney(r.totalEur) : "—";
           const asOf = r.asOf ? String(r.asOf) : "—";
           const sourceCell = linkHtml(r.url, r.sourceName || r.sourceId || "—");
+          const limited = isRateLimitedResult(r);
+          const statusText = limited ? rateLimitHint(meta) : null;
           return `<tr>
             <td data-label="Quelle">${sourceCell}</td>
             <td class="right" data-label="Preis (€/t)">${escapeHtml(price)}</td>
             <td class="right" data-label="Gesamt (€)">${escapeHtml(total)}</td>
             <td class="muted" data-label="Stand">${escapeHtml(asOf)}</td>
-            <td data-label="Status">${statusCellHtml(r)}</td>
+            <td data-label="Status">${statusCellHtml(r)}${statusText ? `<div class="status-note">${escapeHtml(statusText)}</div>` : ""}</td>
             <td class="muted right" data-label="Zeit">${escapeHtml(fmtTime(r.retrievedAt))}</td>
           </tr>`;
         })
