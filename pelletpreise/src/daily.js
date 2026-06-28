@@ -239,7 +239,8 @@ export function getDailyControls({ $ }) {
   const search = String($("dailySeriesSearch").value || "").trim().toLowerCase();
   const postalCode = String($("historyPostalCode")?.value || "").trim();
   const product = String($("historyProduct")?.value || "").trim();
-  const compareMode = Boolean($("dailyCompareMode")?.checked);
+  const compareModeEl = $("dailyCompareMode");
+  const compareMode = compareModeEl ? Boolean(compareModeEl.checked) : true;
   const compareMax = Math.max(1, Math.min(5, Number($("dailyCompareMax")?.value || 3)));
   const compareKeys = compareMode
     ? Array.from(document.querySelectorAll("#dailyCompareSeries input[type=checkbox]:checked")).map((el) => String(el.value))

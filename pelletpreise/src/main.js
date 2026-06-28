@@ -1119,7 +1119,7 @@ function setupEvents() {
       window.location.href = "/pelletpreise/update.html?start=1";
     });
   }
-  ["dailyCompareMode", "dailyCompareMax"].forEach((id) => {
+  ["dailyCompareMax"].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener("input", () => renderDailyHistory());

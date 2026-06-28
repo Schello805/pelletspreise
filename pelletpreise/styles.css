@@ -620,6 +620,13 @@ textarea:focus,
   overflow: auto;
 }
 
+.history-compare-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .compare-item {
   display: inline-flex;
   gap: 10px;
