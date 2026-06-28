@@ -1272,38 +1272,44 @@ textarea {
 }
 
 .source-dialog-body {
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  align-items: start;
-}
-
-.source-dialog-body > * {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-width: 0;
 }
 
-.source-dialog-body > .source-wizard,
-.source-dialog-body > .source-assistant-card,
-.source-dialog-body > .grid.two,
-.source-dialog-body > .source-url-field,
-.source-dialog-body > .source-probe,
-.source-dialog-body > .source-parser-result,
-.source-dialog-body > .source-field-full {
+.source-dialog-body > * {
+  width: 100%;
+  min-width: 0;
+}
+
+.source-guide-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.source-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.source-form-grid > .field {
+  grid-column: auto;
+}
+
+.source-form-grid > .source-field-wide {
   grid-column: 1 / -1;
 }
 
-.source-dialog-body > .source-field {
-  grid-column: span 4;
-}
-
-.source-dialog-body > .source-field-wide {
-  grid-column: span 8;
-}
-
-.source-dialog-body .grid.two {
-  padding: 0;
-}
-
-.source-dialog-body .grid.two .field {
-  grid-column: auto;
+.source-field-wide,
+.source-field-full,
+.source-url-field,
+.source-probe,
+.source-parser-result {
+  grid-column: 1 / -1;
 }
 
 .dialog-title {
@@ -1362,15 +1368,15 @@ textarea {
 .source-wizard {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 7px;
 }
 
 .source-assistant-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
   border: 1px solid rgba(103, 230, 190, 0.24);
   border-radius: var(--pp-radius2);
   background: linear-gradient(135deg, rgba(103, 230, 190, 0.12), rgba(77, 171, 247, 0.06));
@@ -1392,7 +1398,8 @@ textarea {
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 8px 10px;
+  min-height: 58px;
+  padding: 8px 9px;
   border: 1px solid rgba(166, 187, 232, 0.13);
   border-radius: var(--pp-radius2);
   background: rgba(255, 255, 255, 0.025);
@@ -1548,6 +1555,11 @@ textarea {
 }
 
 @media (max-width: 880px) {
+  .source-guide-panel,
+  .source-form-grid {
+    grid-template-columns: 1fr;
+  }
+
   .source-guide,
   .source-wizard,
   .probe-candidates {

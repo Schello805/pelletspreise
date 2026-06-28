@@ -327,21 +327,22 @@
             </div>
 
             <div class="dialog-body source-dialog-body">
-              <div class="source-wizard" aria-label="Quellen-Assistent">
-                <div class="wizard-step is-active"><span>1</span><strong>Link</strong><small>URL einfügen</small></div>
-                <div class="wizard-step"><span>2</span><strong>Preis</strong><small>Fund auswählen</small></div>
-                <div class="wizard-step"><span>3</span><strong>Nutzung</strong><small>Historie/Alarme</small></div>
-              </div>
-
-              <div class="source-assistant-card">
-                <div>
-                  <strong>Geführtes Parsing</strong>
-                  <span>Füge zuerst den Link ein. Mit „Testen & Preise suchen“ lädt die App die Seite, zeigt mögliche Preise und validiert deine Auswahl.</span>
+              <div class="source-guide-panel" aria-label="Quellen-Assistent">
+                <div class="source-wizard">
+                  <div class="wizard-step is-active"><span>1</span><strong>Link</strong><small>URL einfügen</small></div>
+                  <div class="wizard-step"><span>2</span><strong>Preis</strong><small>Fund auswählen</small></div>
+                  <div class="wizard-step"><span>3</span><strong>Nutzung</strong><small>Historie/Alarme</small></div>
                 </div>
-                <button class="btn btn-primary btn-sm" type="button" id="probeSourceBtnTop">Testen & Preise suchen</button>
+                <div class="source-assistant-card">
+                  <div>
+                    <strong>Geführtes Parsing</strong>
+                    <span>Link einfügen, Preise suchen, passenden Preis anklicken. Die App übernimmt den Regex-Vorschlag und validiert ihn direkt.</span>
+                  </div>
+                  <button class="btn btn-primary btn-sm" type="button" id="probeSourceBtnTop">Preise suchen</button>
+                </div>
               </div>
 
-              <div class="grid two">
+              <div class="source-form-grid">
                 <label class="field">
                   <span class="label">Name</span>
                   <input id="src_name" required placeholder="z. B. Händler XY" />
@@ -353,32 +354,32 @@
                     <option value="false">Nein</option>
                   </select>
                 </label>
+
+                <label class="field">
+                  <span class="label">Typ</span>
+                  <select id="src_kind">
+                    <option value="http-regex">HTTP + Regex (einfach)</option>
+                    <option value="playwright">Playwright (Formulare/JS)</option>
+                  </select>
+                  <span class="help">HTTP+Regex für HTML-Preise. Playwright für Formulare und JS-Seiten.</span>
+                </label>
+
+                <label class="field">
+                  <span class="label">Cache (Stunden)</span>
+                  <input id="src_cacheHours" type="number" min="0.25" max="168" step="0.25" placeholder="z. B. 12" />
+                  <span class="help">Optional: Ergebnis pro Quelle wiederverwenden.</span>
+                </label>
+
+                <label class="field source-field-wide">
+                  <span class="label">Statistik</span>
+                  <select id="src_historyMode">
+                    <option value="auto">Auto (wie bisher)</option>
+                    <option value="best">Nur bestes Angebot</option>
+                    <option value="none">Nicht aufnehmen</option>
+                  </select>
+                  <span class="help">Nur gespeicherte Historienwerte können später Alarme auslösen.</span>
+                </label>
               </div>
-
-              <label class="field source-field">
-                <span class="label">Typ</span>
-                <select id="src_kind">
-                  <option value="http-regex">HTTP + Regex (einfach)</option>
-                  <option value="playwright">Playwright (Formulare/JS)</option>
-                </select>
-                <span class="help">HTTP+Regex funktioniert gut, wenn der Preis im HTML steht. Playwright kann Felder ausfüllen und klicken.</span>
-              </label>
-
-              <label class="field source-field">
-                <span class="label">Cache (Stunden)</span>
-                <input id="src_cacheHours" type="number" min="0.25" max="168" step="0.25" placeholder="z. B. 12" />
-                <span class="help">Optional: Wenn gesetzt, wird das Ergebnis pro Quelle so lange wiederverwendet (spart Abfragen).</span>
-              </label>
-
-              <label class="field source-field">
-                <span class="label">Statistik</span>
-                <select id="src_historyMode">
-                  <option value="auto">Auto (wie bisher)</option>
-                  <option value="best">Nur bestes Angebot</option>
-                  <option value="none">Nicht aufnehmen</option>
-                </select>
-                <span class="help">Wichtig: Nur gespeicherte Historienwerte können später Alarme auslösen.</span>
-              </label>
 
               <div class="field source-url-field">
                 <label for="src_url" class="label">URL</label>
@@ -392,13 +393,13 @@
               <div id="sourceProbeResult" class="source-probe" hidden></div>
               <div id="sourceParserResult" class="source-parser-result" hidden></div>
 
-              <label class="field source-field source-field-wide">
+              <label class="field source-field-wide">
                 <span class="label">Regex (Preis)</span>
                 <input id="src_regex" placeholder="z. B. (\\d+[\\.,]\\d+)\\s*€\\s*/\\s*t" />
                 <span class="help">Erste Capture-Group wird als Zahl geparst. Tipp: Erst „Link prüfen“, dann Vorschlag übernehmen.</span>
               </label>
 
-              <label class="field source-field">
+              <label class="field">
                 <span class="label">Regex (Stand)</span>
                 <input id="src_regexAsOf" placeholder="optional, z. B. (\\d{2}\\.\\d{2}\\.\\d{2})\\s*\\|\\s*(\\d{2}:\\d{2})" />
                 <span class="help">Optional: Datum/Uhrzeit-Stand. Wenn 2 Gruppen vorhanden sind, wird „Datum Uhrzeit“ angezeigt.</span>
