@@ -241,11 +241,10 @@ export function getDailyControls({ $ }) {
   const product = String($("historyProduct")?.value || "").trim();
   const compareModeEl = document.getElementById("dailyCompareMode");
   const compareMode = compareModeEl ? Boolean(compareModeEl.checked) : true;
-  const compareMax = Math.max(1, Math.min(5, Number($("dailyCompareMax")?.value || 3)));
   const compareKeys = compareMode
     ? Array.from(document.querySelectorAll("#dailyCompareSeries input[type=checkbox]:checked")).map((el) => String(el.value))
     : [];
-  return { days, groupBy, onlyOrderable, metric, search, postalCode, product, compareMode, compareMax, compareKeys };
+  return { days, groupBy, onlyOrderable, metric, search, postalCode, product, compareMode, compareKeys };
 }
 
 export function updateHistoryExportLinks({ $, state }) {
@@ -302,7 +301,7 @@ export function renderDailyHistory({
   const compareHint = document.getElementById("dailyCompareHint");
   const dashboardHost = document.getElementById("dailyDashboardCards");
 
-  const { groupBy, metric, search, compareMode, compareMax, compareKeys, onlyOrderable, postalCode, product } = getDailyControls({ $ });
+  const { groupBy, metric, search, compareMode, compareKeys, onlyOrderable, postalCode, product } = getDailyControls({ $ });
   const seriesList = buildSeriesFromDailyRows(state.dailyRows, { groupBy: groupBy === "dealer" ? "dealer" : "source" });
   const filtered = search ? seriesList.filter((s) => s.label.toLowerCase().includes(search)) : seriesList;
   const activeFilterLabels = [
@@ -337,11 +336,11 @@ export function renderDailyHistory({
 
   // Compare series (chart only)
   const availableKeys = new Set(filtered.map((s) => s.key));
+  const compareWasRendered = Boolean(compareHost?.querySelector('input[type="checkbox"]'));
   const cleaned = (compareMode ? compareKeys : [])
-    .filter((k) => availableKeys.has(k))
-    .slice(0, compareMax);
-  const fallback = filtered.slice(0, compareMax).map((s) => s.key);
-  state.dailyCompareKeys = cleaned.length ? cleaned : fallback;
+    .filter((k) => availableKeys.has(k));
+  const fallback = filtered.map((s) => s.key);
+  state.dailyCompareKeys = cleaned.length || compareWasRendered ? cleaned : fallback;
 
   if (compareHost) {
     if (!compareMode) {
@@ -375,7 +374,6 @@ export function renderDailyHistory({
     ? state.dailyCompareKeys
         .map((k) => filtered.find((s) => s.key === k))
         .filter(Boolean)
-        .slice(0, compareMax)
     : [selected];
 
   const chartInput = chartSeries.map((s) => ({

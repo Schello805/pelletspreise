@@ -1139,12 +1139,6 @@ function setupEvents() {
       window.location.href = "/pelletpreise/update.html?start=1";
     });
   }
-  ["dailyCompareMax"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener("input", () => renderDailyHistory());
-    el.addEventListener("change", () => renderDailyHistory());
-  });
   const compareHost = document.getElementById("dailyCompareSeries");
   if (compareHost) compareHost.addEventListener("change", () => renderDailyHistory());
 
