@@ -692,6 +692,21 @@ textarea:focus,
   padding: 14px 16px 4px;
 }
 
+.history-pick-card {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 12px;
+  margin: 10px 16px 12px;
+  padding: 12px;
+  border: 1px solid rgba(166, 187, 232, 0.14);
+  border-radius: var(--pp-radius2);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.035), rgba(5, 10, 20, 0.18));
+}
+
+.history-pick-card .field {
+  margin: 0;
+}
+
 .history-filter-card {
   margin: 10px 16px 12px;
   border: 1px solid rgba(166, 187, 232, 0.13);

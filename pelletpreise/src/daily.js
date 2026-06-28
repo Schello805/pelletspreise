@@ -165,7 +165,7 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
     ctx.fillStyle = "rgba(255,255,255,0.62)";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("Keine Daten für diese Serie im Zeitraum.", pad.l + innerW / 2, pad.t + innerH / 2);
+    ctx.fillText("Keine Daten für diese Auswahl im Zeitraum.", pad.l + innerW / 2, pad.t + innerH / 2);
     return;
   }
 
@@ -317,7 +317,7 @@ export function renderDailyHistory({
     statsEl.textContent = "—";
     lastEl.textContent = "—";
     if (compareHost) compareHost.innerHTML = "";
-    if (compareHint) compareHint.textContent = activeFilterLabels.length ? `Keine Serien für aktuelle Filter: ${activeFilterLabels.join(", ")}.` : "Keine Serien im gewählten Zeitraum.";
+    if (compareHint) compareHint.textContent = activeFilterLabels.length ? `Keine Quellen/Händler für aktuelle Filter: ${activeFilterLabels.join(", ")}.` : "Keine Quellen/Händler im gewählten Zeitraum.";
     if (dashboardHost) dashboardHost.innerHTML = `<div class="overview-card muted">Noch keine Tageswerte für diese Auswahl.</div>`;
     drawMultiLineChart(canvas, [], {});
     return;
@@ -364,9 +364,9 @@ export function renderDailyHistory({
   }
 
   if (compareHint) {
-    const base = `${filtered.length} von ${seriesList.length} Serien sichtbar.`;
+    const base = `${filtered.length} von ${seriesList.length} Quellen/Händlern sichtbar.`;
     const filterText = activeFilterLabels.length ? ` Aktive Filter: ${activeFilterLabels.join(", ")}.` : "";
-    const lowCountHint = filtered.length <= 1 ? " Für mehr Checkboxen Filter lockern oder weitere Quellen mit Historienwerten abrufen." : "";
+    const lowCountHint = filtered.length <= 1 ? " Für mehr Linien Filter lockern oder weitere Quellen mit Historienwerten abrufen." : "";
     compareHint.textContent = `${base}${filterText}${lowCountHint}`;
   }
 
@@ -412,7 +412,7 @@ export function renderDailyHistory({
         <div class="overview-meta">${best ? `${escapeHtml(best.series.label)}<br/>${escapeHtml(fmtDateKey(best.row.date))}` : "Keine Werte"}</div>
       </div>
       <div class="overview-card">
-        <div class="overview-title">Ausgewählte Serie</div>
+        <div class="overview-title">Ausgewählte Quelle/Händler</div>
         <div class="overview-value">${last ? escapeHtml(`${fmtNumber(last[metric])} ${unitLabel}`) : "—"}</div>
         <div class="overview-meta">${escapeHtml(selected.label)}${last ? `<br/>letzter Wert: ${escapeHtml(fmtDateKey(last.date))}` : ""}</div>
       </div>

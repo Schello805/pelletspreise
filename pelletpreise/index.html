@@ -453,9 +453,9 @@
 	              </summary>
 	              <div class="grid" style="padding: 12px;">
 	                <label class="field" style="grid-column: span 12;">
-	                  <span class="label">Quelle/Serie</span>
+	                  <span class="label">Quelle oder Händler</span>
 	                  <select id="alert_sourceId"></select>
-	                  <span class="help">Wähle die Zeitreihe, die überwacht werden soll.</span>
+	                  <span class="help">Wähle den Preisverlauf, der überwacht werden soll.</span>
 	                </label>
 
 	                <label class="field">
@@ -546,8 +546,25 @@
 	            <div class="overview-card muted">Lade Kennzahlen …</div>
 	          </div>
 
-	          <details class="history-filter-card" open>
-	            <summary>Filter & Serienauswahl</summary>
+	          <div class="history-pick-card">
+	            <label class="field" style="grid-column: span 12;">
+	              <span class="label">Quelle oder Händler auswählen</span>
+	              <select id="dailySeriesSelect"></select>
+	              <span class="help">Steuert Detailtabelle, Zusammenfassung und Export.</span>
+	            </label>
+
+	            <label class="field" style="grid-column: span 12;">
+	              <input id="dailyCompareMode" type="checkbox" checked hidden aria-hidden="true" tabindex="-1" />
+	              <div class="history-compare-head">
+	                <span class="label" style="margin:0;">Linien im Diagramm</span>
+	              </div>
+	              <div id="dailyCompareSeries" class="compare-series" style="margin-top:10px;"></div>
+	              <span class="help" id="dailyCompareHint">Wähle die Quellen/Händler, die als Linie im Diagramm angezeigt werden.</span>
+	            </label>
+	          </div>
+
+	          <details class="history-filter-card">
+	            <summary>Filter & Expertenoptionen</summary>
 	          <div class="grid" style="padding-top: 8px;">
 	            <label class="field">
 	              <span class="label">Zeitraum</span>
@@ -584,7 +601,7 @@
 	                <option value="source" selected>pro Quelle (bestes Angebot)</option>
 	                <option value="dealer">pro Händler (je Quelle)</option>
 	              </select>
-	              <span class="help">Bei Händler-Gruppierung entstehen mehr Zeitreihen.</span>
+	              <span class="help">Bei Händler-Gruppierung entstehen mehr Preislinien.</span>
 	            </label>
 
 	            <label class="field" style="display:flex; align-items:end; justify-content:flex-end;">
@@ -605,24 +622,9 @@
 	            </label>
 
 	            <label class="field" style="grid-column: span 12;">
-	              <span class="label">Serie suchen</span>
+	              <span class="label">Quelle/Händler suchen</span>
 	              <input id="dailySeriesSearch" placeholder="z. B. HeizPellets24, hello:Heat, 1Heiz …" />
-	              <span class="help">Filtert die Serien-Auswahl (Quelle/Händler).</span>
-	            </label>
-
-	            <label class="field" style="grid-column: span 12;">
-	              <span class="label">Serie</span>
-	              <select id="dailySeriesSelect"></select>
-	              <span class="help">Wähle eine Zeitreihe für Chart & Detailtabelle.</span>
-	            </label>
-
-	            <label class="field" style="grid-column: span 12;">
-	              <input id="dailyCompareMode" type="checkbox" checked hidden aria-hidden="true" tabindex="-1" />
-	              <div class="history-compare-head">
-	                <span class="label" style="margin:0;">Serien im Diagramm</span>
-	              </div>
-	              <div id="dailyCompareSeries" class="compare-series" style="margin-top:10px;"></div>
-	              <span class="help" id="dailyCompareHint">Wähle die Quellen/Händler, die als Linie im Diagramm angezeigt werden.</span>
+	              <span class="help">Filtert die Auswahl oben und die Diagramm-Linien.</span>
 	            </label>
 	          </div>
 	          </details>
@@ -643,11 +645,11 @@
 	          </div>
 
 	          <div class="px-3 pb-3">
-	            <a class="btn btn-outline-light btn-sm" id="exportSelectedDailyCsv" href="#" download>Ausgewählte Serie als CSV</a>
+	            <a class="btn btn-outline-light btn-sm" id="exportSelectedDailyCsv" href="#" download>Ausgewählte Quelle/Händler als CSV</a>
 	          </div>
 
 	          <div class="table-wrap px-3 pb-3" style="margin-top: 12px;">
-	            <div class="section-title">Details (ausgewählte Serie)</div>
+	            <div class="section-title">Details (ausgewählte Quelle/Händler)</div>
 		            <table class="table table-sm table-hover align-middle" aria-label="Tageswerte Details">
 	              <thead>
 	                <tr>
