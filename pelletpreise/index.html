@@ -333,13 +333,16 @@
                   <div class="wizard-step"><span>2</span><strong>Preis</strong><small>Fund auswählen</small></div>
                   <div class="wizard-step"><span>3</span><strong>Nutzung</strong><small>Historie/Alarme</small></div>
                 </div>
-                <div class="source-assistant-card">
-                  <div>
-                    <strong>Geführtes Parsing</strong>
-                    <span>Link einfügen, Preise suchen, passenden Preis anklicken. Die App übernimmt den Regex-Vorschlag und validiert ihn direkt.</span>
-                  </div>
-                  <button class="btn btn-primary btn-sm" type="button" id="probeSourceBtnTop">Preise suchen</button>
+              <div class="source-assistant-card">
+                <div>
+                  <strong>Geführte Analyse</strong>
+                  <span>Für normale Nutzer: Link einfügen und per KI analysieren lassen. Regex bleibt nur als Experten-Option.</span>
                 </div>
+                <div class="button-row">
+                  <button class="btn btn-primary btn-sm" type="button" id="aiAnalyzeSourceBtnTop">Mit KI analysieren</button>
+                  <button class="btn btn-outline-light btn-sm" type="button" id="probeSourceBtnTop">Ohne KI suchen</button>
+                </div>
+              </div>
               </div>
 
               <div class="source-form-grid" data-source-step="price usage">
@@ -385,25 +388,31 @@
                 <label for="src_url" class="label">URL</label>
                 <div class="inline-control">
                   <input id="src_url" placeholder="https://... oder mit Platzhaltern {postalCode} {quantityTons} {product}" />
-                  <button class="btn btn-outline-light btn-sm" type="button" id="probeSourceBtn">Testen</button>
+                  <button class="btn btn-primary btn-sm" type="button" id="aiAnalyzeSourceBtn">KI prüfen</button>
+                  <button class="btn btn-outline-light btn-sm" type="button" id="probeSourceBtn">Ohne KI</button>
                 </div>
-                <span class="help">Platzhalter werden automatisch ersetzt. Beispiel: <code>{postalCode}</code>, <code>{quantityKg}</code>.</span>
+                <span class="help">Normalfall: „KI prüfen“. Platzhalter werden automatisch ersetzt. Beispiel: <code>{postalCode}</code>, <code>{quantityKg}</code>.</span>
               </div>
 
               <div id="sourceProbeResult" class="source-probe" data-source-step="price usage" hidden></div>
               <div id="sourceParserResult" class="source-parser-result" data-source-step="usage" hidden></div>
 
-              <label class="field source-field-wide" data-source-step="price usage" data-advanced-field="regex">
-                <span class="label">Regex (Preis)</span>
-                <input id="src_regex" placeholder="z. B. (\\d+[\\.,]\\d+)\\s*€\\s*/\\s*t" />
-                <span class="help">Erste Capture-Group wird als Zahl geparst. Tipp: Erst „Link prüfen“, dann Vorschlag übernehmen.</span>
-              </label>
+              <details class="source-advanced" data-source-step="price usage">
+                <summary>Expertenmodus: technische Erkennung anzeigen</summary>
+                <div class="source-form-grid">
+                  <label class="field source-field-wide">
+                    <span class="label">Preis-Regel</span>
+                    <input id="src_regex" placeholder="wird automatisch gesetzt" />
+                    <span class="help">Nur ändern, wenn die automatische Erkennung nicht passt.</span>
+                  </label>
 
-              <label class="field" data-source-step="usage" data-advanced-field="regex">
-                <span class="label">Regex (Stand)</span>
-                <input id="src_regexAsOf" placeholder="optional, z. B. (\\d{2}\\.\\d{2}\\.\\d{2})\\s*\\|\\s*(\\d{2}:\\d{2})" />
-                <span class="help">Optional: Datum/Uhrzeit-Stand. Wenn 2 Gruppen vorhanden sind, wird „Datum Uhrzeit“ angezeigt.</span>
-              </label>
+                  <label class="field source-field-wide">
+                    <span class="label">Stand-Regel (optional)</span>
+                    <input id="src_regexAsOf" placeholder="optional" />
+                    <span class="help">Optional: Datum/Uhrzeit-Stand auslesen.</span>
+                  </label>
+                </div>
+              </details>
 
               <label class="field source-field source-field-full" data-source-step="usage" data-kind-field="playwright">
                 <span class="label">Playwright Schritte (JSON)</span>
@@ -723,6 +732,39 @@
 	          </div>
 	          <div class="system-grid" id="systemSummary">
 	            <div class="overview-card muted">Lade Diagnose …</div>
+	          </div>
+
+	          <div class="px-3 pb-3">
+	            <details class="card bg-transparent border-secondary-subtle" style="margin: 0;">
+	              <summary class="card-header" style="cursor:pointer;">
+	                <div>
+	                  <div class="card-title" style="font-size: 15px;">KI-Analyse für Quellen</div>
+	                  <div class="card-subtitle">Optional: OpenAI oder Gemini nutzt sichtbaren Seitentext, um den richtigen €/t-Preis zu finden.</div>
+	                </div>
+	              </summary>
+	              <div class="grid" style="padding: 12px;">
+	                <label class="field">
+	                  <span class="label">Anbieter</span>
+	                  <select id="aiProvider">
+	                    <option value="">Aus</option>
+	                    <option value="openai">OpenAI</option>
+	                    <option value="gemini">Gemini</option>
+	                  </select>
+	                </label>
+	                <label class="field">
+	                  <span class="label">Modell (optional)</span>
+	                  <input id="aiModel" placeholder="OpenAI: gpt-4o-mini · Gemini: gemini-1.5-flash" />
+	                </label>
+	                <label class="field" style="grid-column: span 12;">
+	                  <span class="label">API-Key</span>
+	                  <input id="aiApiKey" type="password" autocomplete="off" placeholder="leer lassen = bestehenden Key behalten" />
+	                  <span class="help" id="aiConfigHelp">Der Key wird lokal auf diesem Server gespeichert und nicht im Browser angezeigt.</span>
+	                </label>
+	                <div class="field actions" style="grid-column: span 12;">
+	                  <button class="btn btn-primary btn-sm" type="button" id="saveAiSettingsBtn">KI-Einstellungen speichern</button>
+	                </div>
+	              </div>
+	            </details>
 	          </div>
 	        </div>
 	      </section>

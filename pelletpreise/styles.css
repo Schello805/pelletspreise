@@ -1394,6 +1394,35 @@ textarea {
   line-height: 1.3;
 }
 
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.source-advanced {
+  border: 1px solid rgba(166, 187, 232, 0.14);
+  border-radius: var(--pp-radius2);
+  background: rgba(5, 10, 20, 0.22);
+  padding: 0;
+}
+
+.source-advanced summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  color: var(--pp-muted);
+  font-weight: 900;
+}
+
+.source-advanced[open] summary {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.source-advanced .source-form-grid {
+  padding: 0 12px 12px;
+}
+
 .wizard-step {
   display: flex;
   gap: 8px;
@@ -1578,7 +1607,8 @@ textarea {
 
   .inline-control,
   .probe-head,
-  .source-assistant-card {
+  .source-assistant-card,
+  .button-row {
     flex-direction: column;
     align-items: stretch;
   }

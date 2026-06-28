@@ -357,6 +357,14 @@ async function refreshSources() {
 function applySettingsToUi(settings) {
   const cb = document.getElementById("autoDailyEnabled");
   if (cb) cb.checked = Boolean(settings?.autoDailyEnabled);
+  const aiProvider = document.getElementById("aiProvider");
+  const aiModel = document.getElementById("aiModel");
+  const aiApiKey = document.getElementById("aiApiKey");
+  const aiHelp = document.getElementById("aiConfigHelp");
+  if (aiProvider) aiProvider.value = String(settings?.ai?.provider || "");
+  if (aiModel) aiModel.value = String(settings?.ai?.model || "");
+  if (aiApiKey) aiApiKey.value = "";
+  if (aiHelp) aiHelp.textContent = settings?.ai?.configured ? "API-Key ist gespeichert. Leer lassen, um ihn beizubehalten." : "Noch kein API-Key gespeichert.";
   const statusEl = document.getElementById("autoDailyStatus");
   const lastAt = settings?.lastAutoRunAt ? fmtTime(settings.lastAutoRunAt) : "";
   const err = settings?.lastAutoError ? String(settings.lastAutoError) : "";
@@ -556,6 +564,46 @@ async function probeSourceFromDialog() {
   return data.probe;
 }
 
+async function analyzeSourceWithAiFromDialog() {
+  const url = String(document.getElementById("src_url")?.value || "").trim();
+  if (!url) throw new Error("Bitte zuerst eine URL einfügen.");
+  const query = getQueryFromForm();
+  const data = await apiFetch("/api/sources/ai-analyze", { method: "POST", body: JSON.stringify({ url, query }) });
+  const extraction = data.extraction || {};
+  const value = Number(extraction.priceEurPerTon);
+  const raw = extraction.priceText || (Number.isFinite(value) ? `${String(value).replace(".", ",")} € pro Tonne` : "");
+  const probe = {
+    url: data.page?.url || url,
+    rendered: Boolean(data.page?.rendered),
+    suggestedRegex: "(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:/|pro|je)\\s*(?:Tonne|1000\\s*kg|t)",
+    candidates: Number.isFinite(value)
+      ? [
+          {
+            value,
+            raw,
+            snippet: extraction.reason || "Von KI als relevanter Pelletpreis pro Tonne erkannt.",
+            reason: `KI · ${Math.round(Number(extraction.confidence || 0) * 100)}% Sicherheit`,
+            regex: "(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:\\/|pro|je)\\s*(?:Tonne|1000\\s*kg|t)",
+          },
+        ]
+      : [],
+  };
+  renderSourceProbe(probe);
+  if (probe.rendered) {
+    const kindEl = document.getElementById("src_kind");
+    const stepsEl = document.getElementById("src_steps");
+    if (kindEl) kindEl.value = "playwright";
+    if (stepsEl && !String(stepsEl.value || "").trim()) {
+      stepsEl.value = JSON.stringify([{ action: "goto", url: "{url}" }, { action: "waitForTimeout", timeoutMs: 1200 }], null, 2);
+    }
+  }
+  const nameEl = document.getElementById("src_name");
+  if (nameEl && !String(nameEl.value || "").trim() && probe.url) nameEl.value = new URL(probe.url).hostname.replace(/^www\./, "");
+  const firstCandidate = document.querySelector("#sourceProbeResult .probe-candidate");
+  if (firstCandidate) firstCandidate.click();
+  return extraction;
+}
+
 function regexForRawPrice(raw) {
   const number = String(raw || "").match(/\d{1,4}(?:[.,]\d{1,2})?/);
   if (number) return `(\\d{2,4}(?:[\\.,]\\d{1,2})?)\\s*(?:€|EUR)\\s*(?:\\/|pro|je)\\s*(?:Tonne|1000\\s*kg|t)`;
@@ -659,6 +707,7 @@ function renderSystem() {
     <div class="overview-card"><div class="overview-title">Abruflimit</div><div class="overview-value">${escapeHtml(String(rate.remainingRuns ?? "—"))}</div><div class="overview-meta">echte Abrufe heute verfügbar${rate.nextAllowedAt ? `<br/>Nächster Abruf: ${escapeHtml(fmtTime(rate.nextAllowedAt))}` : ""}</div></div>
     <div class="overview-card"><div class="overview-title">Quellen</div><div class="overview-value">${escapeHtml(String(diag.sources?.enabled ?? "—"))}</div><div class="overview-meta">aktiv · ${escapeHtml(String(failed.length))} mit Fehler${failed.length ? `<br/>${escapeHtml(failed.map((source) => source.name).join(", "))}` : ""}</div></div>
     <div class="overview-card"><div class="overview-title">E-Mail</div><div class="overview-value">${diag.email?.configured ? "Bereit" : "Offen"}</div><div class="overview-meta">${diag.email?.configured ? `Empfänger: ${escapeHtml(diag.email.to || "—")}` : "SMTP noch nicht vollständig konfiguriert"}</div></div>
+    <div class="overview-card"><div class="overview-title">KI-Analyse</div><div class="overview-value">${diag.ai?.configured ? "Bereit" : "Aus"}</div><div class="overview-meta">${diag.ai?.configured ? `${escapeHtml(diag.ai.provider || "KI")} · ${escapeHtml(diag.ai.model || "Standardmodell")}` : "Optional: API-Key unten hinterlegen"}</div></div>
     <div class="overview-card"><div class="overview-title">Playwright</div><div class="overview-value">${diag.playwright?.chromiumOk ? "Bereit" : "Prüfen"}</div><div class="overview-meta">${diag.playwright?.chromiumOk ? "Chromium installiert" : "Browser fehlt oder Playwright nicht verfügbar"}</div></div>
     <div class="overview-card"><div class="overview-title">Schutz</div><div class="overview-value">${diag.security?.passwordProtection ? "Passwort aktiv" : "LAN offen"}</div><div class="overview-meta">${diag.security?.passwordProtection ? `Benutzer: ${escapeHtml(diag.security.username || "admin")}` : "Optional: APP_PASSWORD setzen"}</div></div>
     <div class="overview-card system-storage"><div class="overview-title">Lokaler Speicher</div><div class="overview-meta">${storage.length ? storage.map((entry) => `${escapeHtml(entry.name)}: ${escapeHtml(formatBytes(entry.bytes))}`).join("<br/>") : "—"}</div></div>
@@ -1029,6 +1078,27 @@ function setupEvents() {
 
   const refreshSystemBtn = document.getElementById("refreshSystemBtn");
   if (refreshSystemBtn) refreshSystemBtn.addEventListener("click", () => refreshSystem().catch((e) => toast(e.message || "Diagnose nicht verfügbar", { kind: "error" })));
+
+  const saveAiSettingsBtn = document.getElementById("saveAiSettingsBtn");
+  if (saveAiSettingsBtn) {
+    saveAiSettingsBtn.addEventListener("click", async () => {
+      saveAiSettingsBtn.disabled = true;
+      try {
+        const provider = String(document.getElementById("aiProvider")?.value || "");
+        const model = String(document.getElementById("aiModel")?.value || "").trim();
+        const apiKey = String(document.getElementById("aiApiKey")?.value || "").trim();
+        const data = await apiFetch("/api/settings", { method: "PUT", body: JSON.stringify({ settings: { ai: { provider, model, ...(apiKey ? { apiKey } : {}) } } }) });
+        state.settings = data.settings || null;
+        applySettingsToUi(state.settings);
+        await refreshSystem().catch(() => {});
+        toast("KI-Einstellungen gespeichert.", { kind: "success" });
+      } catch (err) {
+        toast(err.message || "KI-Einstellungen konnten nicht gespeichert werden.", { kind: "error", timeoutMs: 6200 });
+      } finally {
+        saveAiSettingsBtn.disabled = false;
+      }
+    });
+  }
   const runUpdateBtn = document.getElementById("runFrontendUpdateBtn");
   if (runUpdateBtn) {
     runUpdateBtn.addEventListener("click", async () => {
@@ -1188,6 +1258,25 @@ function setupEvents() {
   if (probeSourceBtnTop) {
     probeSourceBtnTop.addEventListener("click", () => document.getElementById("probeSourceBtn")?.click());
   }
+
+  const runAiAnalyze = async (button) => {
+    const related = [document.getElementById("aiAnalyzeSourceBtn"), document.getElementById("aiAnalyzeSourceBtnTop")].filter(Boolean);
+    const previous = button?.textContent;
+    related.forEach((btn) => (btn.disabled = true));
+    if (button) button.textContent = "KI prüft …";
+    try {
+      const extraction = await analyzeSourceWithAiFromDialog();
+      toast(`KI erkannt: ${fmtNumber(extraction.priceEurPerTon)} €/t`, { kind: "success" });
+    } catch (err) {
+      toast(err.message || "KI-Analyse fehlgeschlagen.", { kind: "error", timeoutMs: 7200 });
+    } finally {
+      related.forEach((btn) => (btn.disabled = false));
+      if (button && previous) button.textContent = previous;
+    }
+  };
+
+  document.getElementById("aiAnalyzeSourceBtn")?.addEventListener("click", (event) => runAiAnalyze(event.currentTarget));
+  document.getElementById("aiAnalyzeSourceBtnTop")?.addEventListener("click", (event) => runAiAnalyze(event.currentTarget));
 
   const sourceProbeResult = document.getElementById("sourceProbeResult");
   if (sourceProbeResult) {

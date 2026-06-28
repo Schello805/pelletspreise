@@ -9,7 +9,7 @@ import { appendHistory, clearHistory, readHistory, readHistoryAll, readSources, 
 import { getCachedResult, pruneCache, setCachedResult } from "./lib/cache.js";
 import { dailyRowsToCsv, getDailyHistory, rawItemsToCsv } from "./lib/history.js";
 import { checkScrapeAllowance, getScrapeStatus, readRunsToday, recordRun } from "./lib/rateLimit.js";
-import { berlinDateKey, berlinHour, patchSettings, readSettings, writeSettings } from "./lib/settings.js";
+import { berlinDateKey, berlinHour, patchSettings, publicSettings, readSettings, writeSettings } from "./lib/settings.js";
 import { evaluateAlerts, patchAlerts, readAlerts, writeAlerts } from "./lib/alerts.js";
 import { getEmailConfig, sendAlertEmail } from "./lib/email.js";
 import { annotatePriceAnomalies } from "./lib/anomaly.js";
@@ -542,6 +542,134 @@ async function probeSourceUrl({ sourceUrl, query }) {
   }
 }
 
+function extractJsonObject(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(raw.slice(start, end + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+async function pageTextForAi({ sourceUrl, query }) {
+  const resolved = applyPlaceholders(sourceUrl, query);
+  if (!/^https?:\/\//i.test(resolved) && !resolved.startsWith("/")) throw new Error("Bitte eine HTTP(S)-URL eingeben.");
+  const finalUrl = resolved.startsWith("/") ? `${BASE_URL}${resolved}` : resolved;
+  const response = await fetch(finalUrl, {
+    redirect: "follow",
+    headers: {
+      "user-agent": `pelletpreis-checker/${APP_VERSION} (+contact: ${process.env.CONTACT_EMAIL || "info@schellenberger.biz"})`,
+      "accept-language": "de-DE,de;q=0.9,en;q=0.8",
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    },
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} beim Prüfen der URL.`);
+  let html = await response.text();
+  let rendered = false;
+
+  try {
+    const probe = buildPriceProbe(html);
+    if (!probe.candidates.length) {
+      const playwright = await import("playwright");
+      const browser = await playwright.chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage({ locale: "de-DE" });
+        await page.goto(finalUrl, { waitUntil: "networkidle", timeout: 18_000 });
+        html = await page.content();
+        rendered = true;
+      } finally {
+        await browser.close().catch(() => {});
+      }
+    }
+  } catch {
+    // Rendering is optional; HTTP text is still useful.
+  }
+
+  return {
+    url: response.url || finalUrl,
+    rendered,
+    text: stripHtmlForSnippet(html).slice(0, 40_000),
+  };
+}
+
+async function callAiExtractor({ settings, pageText, query }) {
+  const provider = String(settings?.ai?.provider || "").trim().toLowerCase();
+  const apiKey = String(settings?.ai?.apiKey || "").trim();
+  if (!provider || !apiKey) throw new Error("KI ist nicht konfiguriert. Bitte in System OpenAI oder Gemini API-Key hinterlegen.");
+
+  const prompt = [
+    "Du bist ein Extraktor für deutsche Holzpellet-Preisrechner.",
+    "Finde den relevanten Pelletpreis pro Tonne für die aktuelle Abfrage.",
+    "Ignoriere Gesamtpreis, MwSt., Lieferpauschalen, Transportkosten, Telefonnummern, Versandbedingungen und Kontaktinfos.",
+    "Antworte ausschließlich als JSON mit diesen Feldern:",
+    "{\"priceEurPerTon\": number|null, \"priceText\": string|null, \"totalEur\": number|null, \"confidence\": number, \"reason\": string}",
+    "",
+    `Abfrage: PLZ ${query.postalCode}, Menge ${query.quantityTons} t, Produkt ${query.product}`,
+    "",
+    "Seitentext:",
+    pageText,
+  ].join("\n");
+
+  if (provider === "openai") {
+    const model = String(settings.ai.model || "gpt-4o-mini").trim();
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: "Du extrahierst Preise strikt als JSON. Keine Markdown-Ausgabe." },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error?.message || `OpenAI Fehler ${response.status}`);
+    return extractJsonObject(data?.choices?.[0]?.message?.content);
+  }
+
+  if (provider === "gemini") {
+    const model = String(settings.ai.model || "gemini-1.5-flash").trim();
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        generationConfig: { temperature: 0, responseMimeType: "application/json" },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error?.message || `Gemini Fehler ${response.status}`);
+    return extractJsonObject(data?.candidates?.[0]?.content?.parts?.[0]?.text);
+  }
+
+  throw new Error("Unbekannter KI-Anbieter.");
+}
+
+function normalizeAiExtraction(raw) {
+  const priceEurPerTon = parseGermanNumber(raw?.priceEurPerTon);
+  const totalEur = parseGermanNumber(raw?.totalEur);
+  return {
+    priceEurPerTon: Number.isFinite(priceEurPerTon) ? priceEurPerTon : null,
+    priceText: raw?.priceText ? String(raw.priceText).trim() : null,
+    totalEur: Number.isFinite(totalEur) ? totalEur : null,
+    confidence: Math.max(0, Math.min(1, Number(raw?.confidence || 0))),
+    reason: raw?.reason ? String(raw.reason).trim().slice(0, 600) : "",
+  };
+}
+
 function readCookies(req) {
   const raw = String(req.headers.cookie || "");
   return raw.split(";").reduce((cookies, part) => {
@@ -813,9 +941,15 @@ async function handleApi(req, res, url) {
     // Auto-run status
     try {
       const settings = await readSettings({ projectRoot });
-      diag.settings = settings;
+      diag.settings = publicSettings(settings);
+      diag.ai = {
+        configured: Boolean(settings?.ai?.apiKey),
+        provider: settings?.ai?.provider || null,
+        model: settings?.ai?.model || null,
+      };
     } catch {
       diag.settings = null;
+      diag.ai = { configured: false, provider: null, model: null };
     }
 
     try {
@@ -846,7 +980,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/settings") {
     const settings = await readSettings({ projectRoot });
-    return jsonResponse(res, 200, { ok: true, settings });
+    return jsonResponse(res, 200, { ok: true, settings: publicSettings(settings) });
   }
 
   if (req.method === "PUT" && url.pathname === "/api/settings") {
@@ -855,7 +989,7 @@ async function handleApi(req, res, url) {
     const current = await readSettings({ projectRoot });
     const next = patchSettings(current, patch);
     await writeSettings({ projectRoot, settings: next });
-    return jsonResponse(res, 200, { ok: true, settings: next });
+    return jsonResponse(res, 200, { ok: true, settings: publicSettings(next) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/alerts") {
@@ -1121,6 +1255,21 @@ async function handleApi(req, res, url) {
     if (!sourceUrl) return jsonResponse(res, 400, { error: "URL fehlt." });
     const probe = await probeSourceUrl({ sourceUrl, query });
     return jsonResponse(res, 200, { ok: true, probe });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/sources/ai-analyze") {
+    const body = (await readJsonBody(req)) || {};
+    const query = normalizeQuery(body.query || {});
+    const sourceUrl = String(body.url || "").trim();
+    if (!sourceUrl) return jsonResponse(res, 400, { error: "URL fehlt." });
+    const settings = await readSettings({ projectRoot });
+    const page = await pageTextForAi({ sourceUrl, query });
+    const raw = await callAiExtractor({ settings, pageText: page.text, query });
+    const extraction = normalizeAiExtraction(raw);
+    if (!Number.isFinite(extraction.priceEurPerTon)) {
+      return jsonResponse(res, 422, { ok: false, error: "KI konnte keinen eindeutigen €/t-Preis erkennen.", extraction, page: { url: page.url, rendered: page.rendered } });
+    }
+    return jsonResponse(res, 200, { ok: true, extraction, page: { url: page.url, rendered: page.rendered } });
   }
 
   if (req.method === "POST" && url.pathname === "/api/sources/test") {
