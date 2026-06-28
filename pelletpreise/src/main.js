@@ -89,6 +89,7 @@ const state = {
 };
 
 let authenticatedAppInitialized = false;
+const SAVED_KEY_MASK = "•••••••• gespeichert";
 
 function showLoginDialog(message = "") {
   const dialog = document.getElementById("loginDialog");
@@ -363,7 +364,7 @@ function applySettingsToUi(settings) {
   const aiHelp = document.getElementById("aiConfigHelp");
   if (aiProvider) aiProvider.value = String(settings?.ai?.provider || "");
   if (aiModel) aiModel.value = String(settings?.ai?.model || "");
-  if (aiApiKey) aiApiKey.value = "";
+  if (aiApiKey) aiApiKey.value = settings?.ai?.configured ? SAVED_KEY_MASK : "";
   if (aiHelp) aiHelp.textContent = settings?.ai?.configured ? "API-Key ist gespeichert. Leer lassen, um ihn beizubehalten." : "Noch kein API-Key gespeichert.";
   const statusEl = document.getElementById("autoDailyStatus");
   const lastAt = settings?.lastAutoRunAt ? fmtTime(settings.lastAutoRunAt) : "";
@@ -1080,6 +1081,16 @@ function setupEvents() {
   if (refreshSystemBtn) refreshSystemBtn.addEventListener("click", () => refreshSystem().catch((e) => toast(e.message || "Diagnose nicht verfügbar", { kind: "error" })));
 
   const saveAiSettingsBtn = document.getElementById("saveAiSettingsBtn");
+  const aiApiKeyInput = document.getElementById("aiApiKey");
+  if (aiApiKeyInput) {
+    aiApiKeyInput.addEventListener("focus", () => {
+      if (aiApiKeyInput.value === SAVED_KEY_MASK) aiApiKeyInput.value = "";
+    });
+    aiApiKeyInput.addEventListener("blur", () => {
+      if (!aiApiKeyInput.value && state.settings?.ai?.configured) aiApiKeyInput.value = SAVED_KEY_MASK;
+    });
+  }
+
   if (saveAiSettingsBtn) {
     saveAiSettingsBtn.addEventListener("click", async () => {
       saveAiSettingsBtn.disabled = true;
@@ -1087,7 +1098,8 @@ function setupEvents() {
         const provider = String(document.getElementById("aiProvider")?.value || "");
         const model = String(document.getElementById("aiModel")?.value || "").trim();
         const apiKey = String(document.getElementById("aiApiKey")?.value || "").trim();
-        const data = await apiFetch("/api/settings", { method: "PUT", body: JSON.stringify({ settings: { ai: { provider, model, ...(apiKey ? { apiKey } : {}) } } }) });
+        const shouldUpdateApiKey = apiKey && apiKey !== SAVED_KEY_MASK;
+        const data = await apiFetch("/api/settings", { method: "PUT", body: JSON.stringify({ settings: { ai: { provider, model, ...(shouldUpdateApiKey ? { apiKey } : {}) } } }) });
         state.settings = data.settings || null;
         applySettingsToUi(state.settings);
         await refreshSystem().catch(() => {});
