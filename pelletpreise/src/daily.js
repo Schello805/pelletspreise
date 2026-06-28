@@ -239,7 +239,7 @@ export function getDailyControls({ $ }) {
   const search = String($("dailySeriesSearch").value || "").trim().toLowerCase();
   const postalCode = String($("historyPostalCode")?.value || "").trim();
   const product = String($("historyProduct")?.value || "").trim();
-  const compareModeEl = $("dailyCompareMode");
+  const compareModeEl = document.getElementById("dailyCompareMode");
   const compareMode = compareModeEl ? Boolean(compareModeEl.checked) : true;
   const compareMax = Math.max(1, Math.min(5, Number($("dailyCompareMax")?.value || 3)));
   const compareKeys = compareMode
@@ -300,6 +300,7 @@ export function renderDailyHistory({
   const canvas = $("historyChart");
   const compareHost = $("dailyCompareSeries");
   const compareHint = document.getElementById("dailyCompareHint");
+  const dashboardHost = document.getElementById("dailyDashboardCards");
 
   const { groupBy, metric, search, compareMode, compareMax, compareKeys, onlyOrderable, postalCode, product } = getDailyControls({ $ });
   const seriesList = buildSeriesFromDailyRows(state.dailyRows, { groupBy: groupBy === "dealer" ? "dealer" : "source" });
@@ -318,6 +319,7 @@ export function renderDailyHistory({
     lastEl.textContent = "—";
     if (compareHost) compareHost.innerHTML = "";
     if (compareHint) compareHint.textContent = activeFilterLabels.length ? `Keine Serien für aktuelle Filter: ${activeFilterLabels.join(", ")}.` : "Keine Serien im gewählten Zeitraum.";
+    if (dashboardHost) dashboardHost.innerHTML = `<div class="overview-card muted">Noch keine Tageswerte für diese Auswahl.</div>`;
     drawMultiLineChart(canvas, [], {});
     return;
   }
@@ -388,6 +390,41 @@ export function renderDailyHistory({
     const pts = s.items.map((r) => Number(r[metric]));
     return computeSeriesStats(pts);
   };
+
+  if (dashboardHost) {
+    const latestRows = filtered
+      .map((s) => {
+        const sorted = s.items.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        return { series: s, row: sorted[0] || null };
+      })
+      .filter((x) => x.row && Number.isFinite(Number(x.row[metric])));
+    const best = latestRows.slice().sort((a, b) => Number(a.row[metric]) - Number(b.row[metric]))[0] || null;
+    const selectedSorted = selected.items.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const first = selectedSorted[0] || null;
+    const last = selectedSorted[selectedSorted.length - 1] || null;
+    const change =
+      first && last && Number.isFinite(Number(first[metric])) && Number.isFinite(Number(last[metric]))
+        ? Number(last[metric]) - Number(first[metric])
+        : null;
+    const alarmHint = filtered.some((s) => s.items.some((r) => r.kind === "offer" || r.orderUrl)) ? "Angebotsdaten vorhanden" : "Nur Markt-/Durchschnittswerte";
+    dashboardHost.innerHTML = `
+      <div class="overview-card overview-card-primary">
+        <div class="overview-title">Aktuell bester Wert</div>
+        <div class="overview-value">${best ? escapeHtml(`${fmtNumber(best.row[metric])} ${unitLabel}`) : "—"}</div>
+        <div class="overview-meta">${best ? `${escapeHtml(best.series.label)}<br/>${escapeHtml(fmtDateKey(best.row.date))}` : "Keine Werte"}</div>
+      </div>
+      <div class="overview-card">
+        <div class="overview-title">Ausgewählte Serie</div>
+        <div class="overview-value">${last ? escapeHtml(`${fmtNumber(last[metric])} ${unitLabel}`) : "—"}</div>
+        <div class="overview-meta">${escapeHtml(selected.label)}${last ? `<br/>letzter Wert: ${escapeHtml(fmtDateKey(last.date))}` : ""}</div>
+      </div>
+      <div class="overview-card">
+        <div class="overview-title">Trend im Zeitraum</div>
+        <div class="overview-value">${change == null ? "—" : `${change > 0 ? "+" : ""}${escapeHtml(fmtNumber(change))} ${unitLabel}`}</div>
+        <div class="overview-meta">${selected.items.length} Punkt(e) · ${escapeHtml(alarmHint)}</div>
+      </div>
+    `;
+  }
 
   if (!compareMode || chartSeries.length <= 1) {
     const st = statsFor(selected);

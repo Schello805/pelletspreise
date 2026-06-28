@@ -299,7 +299,7 @@ function renderResults({ query, results, meta = {} }) {
 function renderSources(sources) {
   const body = $("sourcesBody");
   if (!sources.length) {
-    body.innerHTML = `<tr><td colspan="6" class="muted">Keine Quellen angelegt.</td></tr>`;
+    body.innerHTML = `<div class="empty-state"><strong>Noch keine Quellen</strong><span>Lege deine erste Preisquelle geführt an. Danach entstehen Historie und Alarme automatisch.</span><button class="btn btn-primary btn-sm" type="button" data-action="addFirstSource">Quelle hinzufügen</button></div>`;
     return;
   }
 
@@ -313,6 +313,7 @@ function renderSources(sources) {
     .map((s) => {
       const enabled = s.enabled ? "checked" : "";
       const last = s.lastRunAt ? fmtTime(s.lastRunAt) : "—";
+      const statusLabel = s.lastError ? "Fehler" : s.lastSuccessAt ? "OK" : "Noch nicht geprüft";
       const sourceHealth = s.lastError
         ? `<span class="status err" title="${escapeAttr(String(s.lastError))}">Fehler</span>`
         : s.lastSuccessAt
@@ -328,23 +329,34 @@ function renderSources(sources) {
         typeof s.cacheHours === "number" && Number.isFinite(s.cacheHours) && s.cacheHours > 0
           ? `<span class="badge bg-secondary-subtle text-light ms-1" title="Cache: ${escapeAttr(String(s.cacheHours))}h">cache</span>`
           : "";
-      return `<tr>
-        <td data-label="Aktiv"><input type="checkbox" data-action="toggle" data-id="${escapeAttr(s.id)}" ${enabled} /></td>
-        <td data-label="Name">${escapeHtml(s.name)}</td>
-        <td class="muted" data-label="Typ">${kindLabel}${cacheBadge}</td>
-        <td data-label="Statistik">
-          <select class="form-select form-select-sm" data-action="historyMode" data-id="${escapeAttr(s.id)}" aria-label="Statistik">
-            ${hm("auto", "Auto")}
-            ${hm("best", "Best")}
-            ${hm("none", "Off")}
-          </select>
-        </td>
-        <td class="muted" data-label="Zuletzt">${escapeHtml(last)}<br/>${sourceHealth}</td>
-        <td class="right" data-label="Aktion">
-          <button class="btn btn-outline-light btn-sm" type="button" data-action="edit" data-id="${escapeAttr(s.id)}">Bearbeiten</button>
-          <button class="btn btn-outline-danger btn-sm" type="button" data-action="delete" data-id="${escapeAttr(s.id)}">Löschen</button>
-        </td>
-      </tr>`;
+      return `<article class="source-card${s.enabled ? "" : " is-disabled"}">
+        <div class="source-card-main">
+          <label class="source-toggle" title="${s.enabled ? "Quelle ist aktiv" : "Quelle ist deaktiviert"}">
+            <input type="checkbox" data-action="toggle" data-id="${escapeAttr(s.id)}" ${enabled} />
+            <span>${s.enabled ? "Aktiv" : "Aus"}</span>
+          </label>
+          <div>
+            <h3>${escapeHtml(s.name)}</h3>
+            <p>${kindLabel}${cacheBadge} · ${escapeHtml(statusLabel)} · zuletzt ${escapeHtml(last)}</p>
+            ${s.lastError ? `<p class="source-error">${escapeHtml(String(s.lastError))}</p>` : ""}
+          </div>
+        </div>
+        <div class="source-card-controls">
+          <label>
+            <span class="label">Historie</span>
+            <select class="form-select form-select-sm" data-action="historyMode" data-id="${escapeAttr(s.id)}" aria-label="Statistik">
+              ${hm("auto", "Auto")}
+              ${hm("best", "Bestpreis")}
+              ${hm("none", "Aus")}
+            </select>
+          </label>
+          <div class="source-status">${sourceHealth}</div>
+          <div class="source-actions">
+            <button class="btn btn-outline-light btn-sm" type="button" data-action="edit" data-id="${escapeAttr(s.id)}">Bearbeiten</button>
+            <button class="btn btn-outline-danger btn-sm" type="button" data-action="delete" data-id="${escapeAttr(s.id)}">Löschen</button>
+          </div>
+        </div>
+      </article>`;
     })
     .join("");
 }
@@ -425,6 +437,15 @@ function setSourceFlowStep(step) {
     el.classList.toggle("is-active", index === { link: 0, price: 1, usage: 2 }[next]);
     el.classList.toggle("is-done", index < { link: 0, price: 1, usage: 2 }[next]);
   });
+  const title = document.getElementById("sourceAssistantTitle");
+  const text = document.getElementById("sourceAssistantText");
+  const copy = {
+    link: ["Link einfügen", "Füge die Preis-Seite ein. Danach sucht die App automatisch passende Pelletpreise."],
+    price: ["Preis auswählen", "Klicke den Preis an, der später in Historie und Alarmen landen soll."],
+    usage: ["Quelle speichern", "Prüfe kurz Name, Historie und Aktiv-Status. Dann speichern — fertig."],
+  }[next];
+  if (title) title.textContent = copy[0];
+  if (text) text.textContent = copy[1];
   const saveBtn = document.getElementById("saveSourceBtn");
   if (saveBtn) {
     saveBtn.hidden = next !== "usage";
@@ -505,7 +526,6 @@ function renderSourceProbe(probe) {
         <strong>1. Link getestet</strong>
         <span>${escapeHtml(probe.url || "—")}</span>
       </div>
-      <button class="btn btn-outline-light btn-sm" type="button" data-probe-action="useRegex" data-regex="${escapeAttr(probe.suggestedRegex || "")}">Allgemeinen Regex übernehmen</button>
     </div>
     <div class="probe-meta">${escapeHtml(
       candidates.length
@@ -1133,6 +1153,10 @@ function setupEvents() {
     const btn = e.target?.closest?.("button[data-action]");
     if (!btn) return;
     const action = btn.dataset.action;
+    if (action === "addFirstSource") {
+      openSourceDialog({ enabled: true, kind: "http-regex" });
+      return;
+    }
     const id = btn.dataset.id;
     if (!id) return;
     const src = state.sources.find((s) => s.id === id);
@@ -1178,6 +1202,7 @@ function setupEvents() {
   });
 
   $("addSourceBtn").addEventListener("click", () => openSourceDialog({ enabled: true, kind: "http-regex" }));
+  document.getElementById("addSourceBtnHero")?.addEventListener("click", () => openSourceDialog({ enabled: true, kind: "http-regex" }));
 
   const closeSourceDialog = () => $("sourceDialog").close();
   document.getElementById("closeSourceDialogBtn")?.addEventListener("click", closeSourceDialog);

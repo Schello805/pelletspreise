@@ -280,6 +280,18 @@
             </div>
           </div>
 
+	          <div class="quick-start" id="firstRunGuide">
+	            <div>
+	              <span class="eyebrow">Startklar in 3 Minuten</span>
+	              <h2>Erst PLZ prüfen, dann Quellen sauber anlegen.</h2>
+	              <p>Nutze deine aktuelle Abfrage links als Basis. Danach findet der Assistent den richtigen Preis pro Tonne und speichert ihn für Historie und Alarme.</p>
+	            </div>
+	            <div class="quick-actions">
+	              <button class="btn btn-primary btn-sm" type="button" data-tab-jump="query">Abfrage prüfen</button>
+	              <button class="btn btn-outline-light btn-sm" type="button" id="addSourceBtnHero">Quelle hinzufügen</button>
+	            </div>
+	          </div>
+
 	          <div class="source-guide">
 	            <div class="source-guide-card">
 	              <span class="guide-step">1</span>
@@ -287,33 +299,17 @@
 	            </div>
 	            <div class="source-guide-card">
 	              <span class="guide-step">2</span>
-	              <div><strong>Preis erkennen</strong><small>Der Assistent zeigt gefundene €-Werte und Regex-Vorschläge.</small></div>
+	              <div><strong>Preis auswählen</strong><small>KI oder Assistent findet mögliche €/t-Werte.</small></div>
 	            </div>
 	            <div class="source-guide-card">
 	              <span class="guide-step">3</span>
-	              <div><strong>Historie & Alarme</strong><small>Definiere, ob die Quelle in Statistik und Alarmen landet.</small></div>
+	              <div><strong>Speichern</strong><small>Danach landen Historie und Alarme automatisch an der richtigen Stelle.</small></div>
 	            </div>
 	          </div>
 
-	          <div class="table-wrap px-3 pb-3">
-	            <table class="table table-sm table-hover align-middle" aria-label="Quellenliste">
-              <thead>
-                <tr>
-                  <th>Aktiv</th>
-                  <th>Name</th>
-                  <th>Typ</th>
-                  <th>Statistik</th>
-                  <th>Zuletzt</th>
-                  <th class="right">Aktion</th>
-                </tr>
-              </thead>
-              <tbody id="sourcesBody">
-                <tr>
-                  <td colspan="6" class="muted">Lade Quellen …</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+	          <div class="source-cards" id="sourcesBody" aria-label="Quellenliste">
+	            <div class="source-card muted">Lade Quellen …</div>
+	          </div>
         </div>
 
         <dialog id="sourceDialog" class="dialog">
@@ -329,18 +325,14 @@
             <div class="dialog-body source-dialog-body" id="sourceDialogBody" data-flow-step="link">
               <div class="source-guide-panel" aria-label="Quellen-Assistent">
                 <div class="source-wizard">
-                  <div class="wizard-step is-active"><span>1</span><strong>Link</strong><small>URL einfügen</small></div>
-                  <div class="wizard-step"><span>2</span><strong>Preis</strong><small>Fund auswählen</small></div>
-                  <div class="wizard-step"><span>3</span><strong>Nutzung</strong><small>Historie/Alarme</small></div>
+                  <div class="wizard-step is-active"><span>1</span><strong>Link</strong><small>Seite einfügen</small></div>
+                  <div class="wizard-step"><span>2</span><strong>Preis</strong><small>Wert anklicken</small></div>
+                  <div class="wizard-step"><span>3</span><strong>Speichern</strong><small>fertig</small></div>
                 </div>
               <div class="source-assistant-card">
                 <div>
-                  <strong>Geführte Analyse</strong>
-                  <span>Für normale Nutzer: Link einfügen und per KI analysieren lassen. Regex bleibt nur als Experten-Option.</span>
-                </div>
-                <div class="button-row">
-                  <button class="btn btn-primary btn-sm" type="button" id="aiAnalyzeSourceBtnTop">Mit KI analysieren</button>
-                  <button class="btn btn-outline-light btn-sm" type="button" id="probeSourceBtnTop">Ohne KI suchen</button>
+                  <strong id="sourceAssistantTitle">Link einfügen</strong>
+                  <span id="sourceAssistantText">Füge die Preis-Seite ein. Danach sucht die App automatisch passende Pelletpreise.</span>
                 </div>
               </div>
               </div>
@@ -364,7 +356,7 @@
                     <option value="http-regex">HTTP + Regex (einfach)</option>
                     <option value="playwright">Playwright (Formulare/JS)</option>
                   </select>
-                  <span class="help">HTTP+Regex für HTML-Preise. Playwright für Formulare und JS-Seiten.</span>
+                  <span class="help">Wird meist automatisch gesetzt. Nur ändern, wenn die Quelle nicht funktioniert.</span>
                 </label>
 
                 <label class="field" data-source-step="usage">
@@ -388,10 +380,10 @@
                 <label for="src_url" class="label">URL</label>
                 <div class="inline-control">
                   <input id="src_url" placeholder="https://... oder mit Platzhaltern {postalCode} {quantityTons} {product}" />
-                  <button class="btn btn-primary btn-sm" type="button" id="aiAnalyzeSourceBtn">KI prüfen</button>
+                  <button class="btn btn-primary btn-sm" type="button" id="aiAnalyzeSourceBtn">Preis finden</button>
                   <button class="btn btn-outline-light btn-sm" type="button" id="probeSourceBtn">Ohne KI</button>
                 </div>
-                <span class="help">Normalfall: „KI prüfen“. Platzhalter werden automatisch ersetzt. Beispiel: <code>{postalCode}</code>, <code>{quantityKg}</code>.</span>
+                <span class="help">Normalfall: Link einfügen und „Preis finden“ klicken. Platzhalter sind optional.</span>
               </div>
 
               <div id="sourceProbeResult" class="source-probe" data-source-step="price usage" hidden></div>
@@ -550,6 +542,12 @@
 	            </div>
 	          </div>
 
+	          <div class="dashboard-grid" id="dailyDashboardCards" aria-label="Historien-Dashboard">
+	            <div class="overview-card muted">Lade Kennzahlen …</div>
+	          </div>
+
+	          <details class="history-filter-card" open>
+	            <summary>Filter & Serienauswahl</summary>
 	          <div class="grid" style="padding-top: 8px;">
 	            <label class="field">
 	              <span class="label">Zeitraum</span>
@@ -635,6 +633,7 @@
 	              <span class="help" id="dailyCompareHint">Wähle die Quellen/Händler, die als Linie im Diagramm angezeigt werden.</span>
 	            </label>
 	          </div>
+	          </details>
 
 	          <div class="chart-wrap">
 	            <canvas id="historyChart" width="1200" height="360" aria-label="Historien-Chart" role="img"></canvas>
