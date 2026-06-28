@@ -1222,7 +1222,7 @@ async function handle(req, res) {
     }
 
     if (url.pathname.startsWith("/api/")) {
-      const publicApi = new Set(["/api/health", "/api/auth/status", "/api/auth/login", "/api/auth/logout"]);
+      const publicApi = new Set(["/api/health", "/api/update", "/api/auth/status", "/api/auth/login", "/api/auth/logout"]);
       if (!publicApi.has(url.pathname) && !getAuthenticatedSession(req)) {
         return jsonResponse(res, 401, { error: "Anmeldung erforderlich.", authRequired: true });
       }
