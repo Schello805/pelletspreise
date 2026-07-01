@@ -692,6 +692,12 @@ textarea:focus,
   padding: 14px 16px 4px;
 }
 
+.dashboard-grid > .overview-card {
+  grid-column: auto;
+  min-width: 0;
+  height: 100%;
+}
+
 .history-pick-card {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -705,6 +711,14 @@ textarea:focus,
 
 .history-pick-card .field {
   margin: 0;
+}
+
+.history-pick-main {
+  grid-column: span 4;
+}
+
+.history-pick-lines {
+  grid-column: span 8;
 }
 
 .history-filter-card {
@@ -1116,6 +1130,13 @@ details.card,
   .overview-card {
     grid-column: span 12;
   }
+  .dashboard-grid > .overview-card {
+    grid-column: auto;
+  }
+  .history-pick-main,
+  .history-pick-lines {
+    grid-column: span 12;
+  }
   .system-grid .overview-card {
     grid-column: span 12;
   }
@@ -1317,6 +1338,31 @@ textarea {
 .compare-series {
   max-height: 150px;
   padding: 8px 10px;
+}
+
+.dashboard-grid {
+  gap: 9px;
+  padding: 12px 12px 4px;
+}
+
+.dashboard-grid > .overview-card {
+  grid-column: auto;
+  min-width: 0;
+  padding: 12px;
+}
+
+.history-pick-card {
+  gap: 10px;
+  margin: 10px 12px 10px;
+  padding: 10px;
+}
+
+.history-pick-main {
+  grid-column: span 4;
+}
+
+.history-pick-lines {
+  grid-column: span 8;
 }
 
 .analysis-card {
