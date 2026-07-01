@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { appendHistory, clearHistory, readHistory, readHistoryAll, readSources, resetSourcesToDefaults, writeSources } from "./lib/store.js";
+import { appendHistory, clearHistory, deletedDefaultSourceTombstone, readHistory, readHistoryAll, readSources, resetSourcesToDefaults, writeSources } from "./lib/store.js";
 import { getCachedResult, pruneCache, setCachedResult } from "./lib/cache.js";
 import { dailyRowsToCsv, getDailyHistory, rawItemsToCsv } from "./lib/history.js";
 import { checkScrapeAllowance, getScrapeStatus, readRunsToday, recordRun } from "./lib/rateLimit.js";
@@ -1244,6 +1244,8 @@ async function handleApi(req, res, url) {
     const id = decodeURIComponent(url.pathname.slice("/api/sources/".length));
     const sources = await readSources({ projectRoot });
     const next = sources.filter((s) => s.id !== id);
+    const tombstone = await deletedDefaultSourceTombstone({ projectRoot, id });
+    if (tombstone) next.push(tombstone);
     await writeSources({ projectRoot, sources: next });
     return jsonResponse(res, 200, { ok: true });
   }

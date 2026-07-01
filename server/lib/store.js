@@ -16,6 +16,17 @@ export function getPaths({ projectRoot }) {
   };
 }
 
+function isDeletedSource(source) {
+  return Boolean(source?.deleted || source?.__deleted);
+}
+
+async function readDefaultSourceIds(paths) {
+  const raw = await fs.readFile(paths.defaultsSourcesPath, "utf8");
+  const defaults = JSON.parse(raw);
+  if (!Array.isArray(defaults)) return new Set();
+  return new Set(defaults.map((source) => String(source?.id || "")).filter(Boolean));
+}
+
 export async function ensureDataFiles({ projectRoot }) {
   const paths = getPaths({ projectRoot });
   await fs.mkdir(paths.dataDir, { recursive: true });
@@ -45,6 +56,11 @@ export async function ensureDataFiles({ projectRoot }) {
       const id = String(def?.id || "");
       if (!id) continue;
       const cur = byId.get(id);
+      if (isDeletedSource(cur)) {
+        merged.push({ id, deleted: true, __deleted: true, deletedAt: cur.deletedAt || null });
+        addedIds.add(id);
+        continue;
+      }
       if (cur) {
         merged.push({
           ...def,
@@ -125,14 +141,30 @@ export async function readSources({ projectRoot }) {
   const raw = await fs.readFile(sourcesPath, "utf8");
   const sources = JSON.parse(raw);
   if (!Array.isArray(sources)) throw new Error("sources.json ist ungültig.");
-  return sources;
+  return sources.filter((source) => !isDeletedSource(source));
 }
 
 export async function writeSources({ projectRoot, sources }) {
   const { sourcesPath } = await ensureDataFiles({ projectRoot });
+  let preservedDeleted = [];
+  try {
+    const rawCurrent = await fs.readFile(sourcesPath, "utf8");
+    const current = JSON.parse(rawCurrent);
+    const nextIds = new Set((Array.isArray(sources) ? sources : []).map((source) => String(source?.id || "")));
+    preservedDeleted = Array.isArray(current) ? current.filter((source) => isDeletedSource(source) && !nextIds.has(String(source?.id || ""))) : [];
+  } catch {
+    preservedDeleted = [];
+  }
   const tmp = `${sourcesPath}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(sources, null, 2), "utf8");
+  await fs.writeFile(tmp, JSON.stringify([...sources, ...preservedDeleted], null, 2), "utf8");
   await fs.rename(tmp, sourcesPath);
+}
+
+export async function deletedDefaultSourceTombstone({ projectRoot, id }) {
+  const paths = await ensureDataFiles({ projectRoot });
+  const defaultIds = await readDefaultSourceIds(paths);
+  if (!defaultIds.has(String(id || ""))) return null;
+  return { id: String(id), deleted: true, __deleted: true, deletedAt: new Date().toISOString() };
 }
 
 export async function resetSourcesToDefaults({ projectRoot }) {
