@@ -697,7 +697,7 @@ function renderDailyHistory() {
   });
 }
 
-function setFooterVersion({ version, rev, updateAvailable, updateHint, frontendUpdateReady, updateRequested } = {}) {
+function setFooterVersion({ version, rev, updateAvailable, updateHint, frontendUpdateReady, updateRequested, remoteOk = true, remoteError = "" } = {}) {
   const el = document.getElementById("footerVersion");
   const updateBtn = document.getElementById("runFrontendUpdateBtn");
   const v = String(version || "").trim();
@@ -706,25 +706,51 @@ function setFooterVersion({ version, rev, updateAvailable, updateHint, frontendU
   if (v) parts.push(`v${v}`);
   if (r) parts.push(`rev ${r}`);
   if (updateAvailable) parts.push("Update verfügbar");
+  if (remoteOk === false) parts.push("Updatecheck offen");
   if (el) {
     el.textContent = parts.join(" · ");
-    el.title = String(updateHint || "").trim();
+    el.title = String(remoteOk === false ? remoteError || "Online-Updatecheck konnte nicht geladen werden." : updateHint || "").trim();
   }
   if (updateBtn) {
-    const canRun = Boolean(updateAvailable && frontendUpdateReady && !updateRequested);
+    const canRun = Boolean(updateAvailable && !updateRequested);
     updateBtn.hidden = false;
     updateBtn.disabled = !canRun;
-    updateBtn.title = String(updateHint || "").trim();
+    updateBtn.title = String(
+      updateAvailable
+        ? frontendUpdateReady
+          ? updateHint || "Update installieren."
+          : `${updateHint || "Update verfügbar."}\n\nFrontend-Update ist nicht vollständig eingerichtet; beim Klick wird die Anleitung angezeigt.`
+        : remoteOk === false
+          ? remoteError || "Online-Updatecheck konnte nicht geladen werden."
+          : updateHint || "",
+    ).trim();
     updateBtn.textContent = updateRequested
       ? "Update läuft …"
       : updateAvailable && frontendUpdateReady
         ? "Update installieren"
         : updateAvailable
-          ? "Update nicht bereit"
+          ? "Update verfügbar"
           : updateAvailable === false
             ? "Auf aktuellem Stand"
             : "Update prüfen …";
   }
+}
+
+async function refreshUpdateStatus({ force = false } = {}) {
+  const data = await apiFetch(`/api/update${force ? "?force=1" : ""}`);
+  if (!data?.ok) return null;
+  state.update = data;
+  setFooterVersion({
+    version: data.current?.version,
+    rev: data.current?.rev,
+    updateAvailable: Boolean(data.updateAvailable),
+    updateHint: data.updateHint,
+    frontendUpdateReady: Boolean(data.frontendUpdateReady),
+    updateRequested: Boolean(data.updateRequested),
+    remoteOk: data.remoteOk !== false,
+    remoteError: data.remoteError,
+  });
+  return data;
 }
 
 function formatBytes(value) {
@@ -755,18 +781,11 @@ function renderSystem() {
 }
 
 async function refreshSystem() {
-  const [diag, update, scrape] = await Promise.all([apiFetch("/api/diagnostics"), apiFetch("/api/update"), refreshScrapeStatus()]);
+  const [diag, update, scrape] = await Promise.all([apiFetch("/api/diagnostics"), refreshUpdateStatus(), refreshScrapeStatus()]);
   state.diagnostics = diag || null;
   state.update = update || null;
   state.scrapeStatus = scrape || null;
-  setFooterVersion({
-    version: update?.current?.version || diag?.version,
-    rev: update?.current?.rev,
-    updateAvailable: Boolean(update?.updateAvailable),
-    updateHint: update?.updateHint,
-    frontendUpdateReady: Boolean(update?.frontendUpdateReady),
-    updateRequested: Boolean(update?.updateRequested),
-  });
+  if (!update) setFooterVersion({ version: diag?.version });
   renderSystem();
 }
 
@@ -1153,6 +1172,18 @@ function setupEvents() {
   const runUpdateBtn = document.getElementById("runFrontendUpdateBtn");
   if (runUpdateBtn) {
     runUpdateBtn.addEventListener("click", async () => {
+      const update = state.update || (await refreshUpdateStatus({ force: true }).catch(() => null));
+      if (update?.updateAvailable && !update.frontendUpdateReady) {
+        const hint = String(update.updateHint || "").trim();
+        await navigator.clipboard?.writeText?.(hint).catch(() => {});
+        toast("Update verfügbar. Die Debian/LXC-Anleitung wurde in die Zwischenablage kopiert.", { kind: "success", timeoutMs: 7000 });
+        return;
+      }
+      if (!update?.updateAvailable) {
+        await refreshUpdateStatus({ force: true }).catch(() => null);
+        toast(state.update?.updateAvailable ? "Update gefunden." : "Aktuell ist kein Update verfügbar.", { kind: state.update?.updateAvailable ? "success" : "info", timeoutMs: 3600 });
+        return;
+      }
       runUpdateBtn.disabled = true;
       toast("Warteseite wird geöffnet. Das Update startet dort automatisch.", { kind: "success", timeoutMs: 3200 });
       window.location.href = "/pelletpreise/update.html?start=1";
@@ -1439,19 +1470,11 @@ async function initialiseAuthenticatedApp({ showLogout = false } = {}) {
   await refreshDiagnostics().catch(() => {});
 
   // Non-blocking update check (GitHub main SHA)
-  apiFetch("/api/update")
-    .then((data) => {
-      if (!data?.ok) return;
-      setFooterVersion({
-        version: data.current?.version,
-        rev: data.current?.rev,
-        updateAvailable: Boolean(data.updateAvailable),
-        updateHint: data.updateHint,
-        frontendUpdateReady: Boolean(data.frontendUpdateReady),
-        updateRequested: Boolean(data.updateRequested),
-      });
-    })
-    .catch(() => {});
+  refreshUpdateStatus().catch(() => {});
+  window.setInterval(() => refreshUpdateStatus().catch(() => {}), 15 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshUpdateStatus({ force: true }).catch(() => {});
+  });
 
   updateHistoryExportLinks({ $, state });
 
@@ -1491,6 +1514,7 @@ export async function bootstrap() {
     const health = await apiFetch("/api/health");
     setServerStatus(`Server: OK (${health.version})`, true);
     setFooterVersion({ version: health.version });
+    refreshUpdateStatus({ force: true }).catch(() => {});
   } catch {
     setServerStatus("Server: nicht erreichbar", false);
     toast("Server nicht erreichbar. Starte den lokalen Server.", { kind: "error", timeoutMs: 6000 });

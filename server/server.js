@@ -814,7 +814,7 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/update") {
     const localSha = await readLocalGitSha();
     const local = { version: APP_VERSION, sha: localSha, rev: shortSha(localSha) };
-    const remote = await fetchRemoteMainSha();
+    const remote = await fetchRemoteMainSha({ force: url.searchParams.get("force") === "1" });
     const latest = { sha: remote.sha, rev: shortSha(remote.sha), date: remote.date };
     const updateAvailable = Boolean(local.rev && latest.rev && local.rev !== latest.rev);
     const hint = [
