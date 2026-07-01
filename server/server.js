@@ -781,6 +781,16 @@ function getHistoryFilters(searchParams) {
   };
 }
 
+async function activeHistorySourceIds({ projectRoot }) {
+  const sources = await readSources({ projectRoot });
+  return new Set(sources.map((source) => String(source?.id || "")).filter(Boolean));
+}
+
+function filterDailyRowsBySources(rows, sourceIds) {
+  if (!(sourceIds instanceof Set) || sourceIds.size === 0) return [];
+  return rows.filter((row) => sourceIds.has(String(row?.sourceId || "")));
+}
+
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/auth/status") {
     const session = getAuthenticatedSession(req);
@@ -1313,6 +1323,7 @@ async function handleApi(req, res, url) {
     const onlyOrderable = url.searchParams.get("onlyOrderable") === "1" || url.searchParams.get("onlyOrderable") === "true";
     const filters = getHistoryFilters(url.searchParams);
     const gb = groupBy === "dealer" ? "dealer" : "source";
+    const sourceIds = await activeHistorySourceIds({ projectRoot });
     let sig = "no-file";
     try {
       const hp = path.join(projectRoot, "server", "data", "history.jsonl");
@@ -1321,14 +1332,15 @@ async function handleApi(req, res, url) {
     } catch {
       // ignore
     }
-    const cacheKey = `${days}|${gb}|${onlyOrderable ? 1 : 0}|${JSON.stringify(filters)}`;
+    const sourceSig = Array.from(sourceIds).sort().join(",");
+    const cacheKey = `${days}|${gb}|${onlyOrderable ? 1 : 0}|${sourceSig}|${JSON.stringify(filters)}`;
     const now = Date.now();
     const cached = dailyHistoryCache.get(cacheKey);
     if (cached && cached.sig === sig && now - cached.atMs < 30_000) {
       return jsonResponse(res, 200, { ok: true, days, groupBy: gb, onlyOrderable, filters, rows: cached.rows });
     }
 
-    const rows = await getDailyHistory({ projectRoot, days, groupBy: gb, onlyOrderable, filters });
+    const rows = filterDailyRowsBySources(await getDailyHistory({ projectRoot, days, groupBy: gb, onlyOrderable, filters }), sourceIds);
     dailyHistoryCache.set(cacheKey, { atMs: now, sig, rows });
     // small cap
     if (dailyHistoryCache.size > 16) dailyHistoryCache = new Map(Array.from(dailyHistoryCache.entries()).slice(-16));
@@ -1351,7 +1363,8 @@ async function handleApi(req, res, url) {
     const groupBy = String(url.searchParams.get("groupBy") || "source");
     const onlyOrderable = url.searchParams.get("onlyOrderable") === "1" || url.searchParams.get("onlyOrderable") === "true";
     const filters = getHistoryFilters(url.searchParams);
-    const rows = await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable, filters });
+    const sourceIds = await activeHistorySourceIds({ projectRoot });
+    const rows = filterDailyRowsBySources(await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable, filters }), sourceIds);
     res.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
       "content-disposition": `attachment; filename="pelletpreise-history-daily.json"`,
@@ -1377,7 +1390,8 @@ async function handleApi(req, res, url) {
     const groupBy = String(url.searchParams.get("groupBy") || "source");
     const onlyOrderable = url.searchParams.get("onlyOrderable") === "1" || url.searchParams.get("onlyOrderable") === "true";
     const filters = getHistoryFilters(url.searchParams);
-    const rows = await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable, filters });
+    const sourceIds = await activeHistorySourceIds({ projectRoot });
+    const rows = filterDailyRowsBySources(await getDailyHistory({ projectRoot, days, groupBy: groupBy === "dealer" ? "dealer" : "source", onlyOrderable, filters }), sourceIds);
     const csv = dailyRowsToCsv(rows);
     res.writeHead(200, {
       "content-type": "text/csv; charset=utf-8",
