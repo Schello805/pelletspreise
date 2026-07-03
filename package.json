@@ -1,7 +1,7 @@
 {
   "name": "signatur-generator",
   "private": true,
-  "version": "0.2.26",
+  "version": "0.2.27",
   "description": "Lokale Webapp zum Abrufen, Vergleichen und Überwachen von Pelletpreisen",
   "type": "module",
   "scripts": {

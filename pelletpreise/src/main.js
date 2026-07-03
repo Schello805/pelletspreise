@@ -896,7 +896,7 @@ function renderAlerts() {
   }
 
   if (!rules.length) {
-    body.innerHTML = `<tr><td colspan="7" class="muted">Noch keine Alarme angelegt.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="8" class="muted">Noch keine Alarme angelegt.</td></tr>`;
     return;
   }
 
@@ -909,12 +909,19 @@ function renderAlerts() {
       const status = r.lastError ? `<span class="status err" title="${escapeAttr(r.lastError)}">Fehler</span>` : `<span class="status ok">OK</span>`;
       const name = r.name ? escapeHtml(String(r.name)) : `<span class="muted">—</span>`;
       const thr = typeof r.thresholdEurPerTon === "number" ? r.thresholdEurPerTon : "";
+      const direction = r.direction === "above" ? "above" : "below";
       return `<tr>
         <td data-label="Aktiv"><input type="checkbox" data-action="toggleAlert" data-id="${escapeAttr(r.id)}" ${enabled} /></td>
         <td data-label="Name">${name}</td>
         <td data-label="Quelle">${escapeHtml(srcName)}</td>
+        <td data-label="Richtung">
+          <select class="form-select form-select-sm alert-direction-select" data-action="direction" data-id="${escapeAttr(r.id)}">
+            <option value="below" ${direction === "below" ? "selected" : ""}>≤ Grenzwert</option>
+            <option value="above" ${direction === "above" ? "selected" : ""}>≥ Grenzwert</option>
+          </select>
+        </td>
         <td class="right" data-label="Grenzwert (€/t)">
-          <input class="form-control form-control-sm" style="max-width: 140px; margin-left:auto;" type="number" step="0.01" min="1"
+          <input class="form-control form-control-sm alert-threshold-input" type="number" step="0.01" min="1"
             value="${escapeAttr(String(thr))}" data-action="threshold" data-id="${escapeAttr(r.id)}" />
         </td>
         <td class="muted right" data-label="Letzte E-Mail">${escapeHtml(lastMail)}</td>
@@ -926,6 +933,32 @@ function renderAlerts() {
       </tr>`;
     })
     .join("");
+}
+
+function syncAlertDirectionUi() {
+  const direction = String(document.getElementById("alert_direction")?.value || "below");
+  const isAbove = direction === "above";
+  const thresholdHelp = document.getElementById("alert_threshold_help");
+  const rearmLabel = document.getElementById("alert_rearm_label");
+  const rearmInput = document.getElementById("alert_rearmAbove");
+  const rearmHelp = document.getElementById("alert_rearm_help");
+  const repeatLabel = document.getElementById("alert_repeat_label");
+  const repeatHelp = document.getElementById("alert_repeat_help");
+
+  if (thresholdHelp) thresholdHelp.textContent = isAbove ? "Alarm bei Preis ≥ Grenzwert." : "Alarm bei Preis ≤ Grenzwert.";
+  if (rearmLabel) rearmLabel.textContent = isAbove ? "Erneut aktiv bis (€/t)" : "Erneut aktiv ab (€/t)";
+  if (rearmInput) rearmInput.placeholder = isAbove ? "z. B. 378" : "z. B. 362";
+  if (rearmHelp) {
+    rearmHelp.textContent = isAbove
+      ? "Nach einem Fall darunter kann ein neuer Preisanstieg erneut auslösen."
+      : "Nach einem Anstieg darüber kann ein neuer Preisfall erneut auslösen.";
+  }
+  if (repeatLabel) repeatLabel.textContent = isAbove ? "bei dauerhaft hohem Preis wiederholen" : "bei dauerhaft niedrigem Preis wiederholen";
+  if (repeatHelp) {
+    repeatHelp.textContent = isAbove
+      ? "Sonst erst nach Entschärfung und erneutem Überschreiten."
+      : "Sonst erst nach Entschärfung und erneutem Unterschreiten.";
+  }
 }
 
 async function refreshAlerts() {
@@ -1003,16 +1036,22 @@ function setupEvents() {
   }
 
   const addAlertBtn = document.getElementById("addAlertBtn");
+  const alertDirection = document.getElementById("alert_direction");
+  if (alertDirection) {
+    alertDirection.addEventListener("change", syncAlertDirectionUi);
+    syncAlertDirectionUi();
+  }
   if (addAlertBtn) {
     addAlertBtn.addEventListener("click", async () => {
       try {
         const sourceId = String(document.getElementById("alert_sourceId")?.value || "").trim();
+        const direction = String(document.getElementById("alert_direction")?.value || "below") === "above" ? "above" : "below";
         const threshold = Number(document.getElementById("alert_threshold")?.value || "");
         const minIntervalHours = Number(document.getElementById("alert_minIntervalHours")?.value || 12);
-        const rearmAboveEurPerTon = Number(document.getElementById("alert_rearmAbove")?.value || "");
+        const rearmValue = Number(document.getElementById("alert_rearmAbove")?.value || "");
         const name = String(document.getElementById("alert_name")?.value || "").trim();
         const matchQuery = Boolean(document.getElementById("alert_matchQuery")?.checked);
-        const repeatWhileBelow = Boolean(document.getElementById("alert_repeatWhileBelow")?.checked);
+        const repeatWhileTriggered = Boolean(document.getElementById("alert_repeatWhileBelow")?.checked);
 
         if (!sourceId) return toast("Bitte eine Quelle auswählen.", { kind: "error" });
         if (!Number.isFinite(threshold) || threshold <= 0) return toast("Bitte einen gültigen Schwellwert (€/t) eingeben.", { kind: "error" });
@@ -1023,10 +1062,13 @@ function setupEvents() {
           enabled: true,
           name,
           sourceId,
+          direction,
           thresholdEurPerTon: threshold,
           minIntervalHours: Number.isFinite(minIntervalHours) ? minIntervalHours : 12,
-          rearmAboveEurPerTon: Number.isFinite(rearmAboveEurPerTon) && rearmAboveEurPerTon >= threshold ? rearmAboveEurPerTon : threshold + 2,
-          repeatWhileBelow,
+          rearmAboveEurPerTon: direction === "below" && Number.isFinite(rearmValue) && rearmValue >= threshold ? rearmValue : threshold + 2,
+          rearmBelowEurPerTon: direction === "above" && Number.isFinite(rearmValue) && rearmValue > 0 && rearmValue <= threshold ? rearmValue : Math.max(1, threshold - 2),
+          repeatWhileBelow: repeatWhileTriggered,
+          repeatWhileTriggered,
           matchQuery,
           query: matchQuery ? baseQuery : null,
         };
@@ -1087,6 +1129,11 @@ function setupEvents() {
           rules[idx] = { ...rules[idx], thresholdEurPerTon: n };
           state.alerts = { ...state.alerts, rules };
         }
+      }
+      if (action === "direction" && t instanceof HTMLSelectElement) {
+        const direction = t.value === "above" ? "above" : "below";
+        rules[idx] = { ...rules[idx], direction, lastBelow: false, lastAbove: false };
+        state.alerts = { ...state.alerts, rules };
       }
     });
 

@@ -735,6 +735,58 @@ textarea:focus,
   font-weight: 900;
 }
 
+.alarm-create-wrap {
+  padding: 12px 12px 0;
+}
+
+.alarm-create-card {
+  margin: 0;
+}
+
+.alarm-create-card > summary.card-header {
+  cursor: pointer;
+  padding: 11px 12px;
+}
+
+.alert-form-grid {
+  padding: 10px;
+  gap: 9px;
+}
+
+.alert-source-field {
+  grid-column: span 5;
+}
+
+.alert-direction-field,
+.alert-rearm-field,
+.alert-name-field,
+.alert-check-field {
+  grid-column: span 3;
+}
+
+.alert-threshold-field,
+.alert-interval-field {
+  grid-column: span 2;
+}
+
+.alert-actions-field {
+  grid-column: span 12;
+  align-items: end;
+}
+
+.alert-table-wrap {
+  margin-top: 10px;
+}
+
+.alert-direction-select {
+  min-width: 116px;
+}
+
+.alert-threshold-input {
+  max-width: 118px;
+  margin-left: auto;
+}
+
 .history-filter-card .grid {
   padding: 0 12px 12px;
 }
@@ -1135,6 +1187,16 @@ details.card,
   }
   .history-pick-main,
   .history-pick-lines {
+    grid-column: span 12;
+  }
+  .alert-source-field,
+  .alert-direction-field,
+  .alert-threshold-field,
+  .alert-interval-field,
+  .alert-rearm-field,
+  .alert-name-field,
+  .alert-check-field,
+  .alert-actions-field {
     grid-column: span 12;
   }
   .system-grid .overview-card {

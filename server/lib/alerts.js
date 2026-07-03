@@ -25,12 +25,17 @@ function normalizeRule(input) {
 
   const query = obj.query && typeof obj.query === "object" ? obj.query : null;
   const matchQuery = Boolean(obj.matchQuery);
+  const direction = obj.direction === "above" ? "above" : "below";
 
   const minIntervalHoursRaw = obj.minIntervalHours == null ? 12 : Number(obj.minIntervalHours);
   const minIntervalHours =
     Number.isFinite(minIntervalHoursRaw) && minIntervalHoursRaw > 0 ? Math.max(1, Math.min(168, minIntervalHoursRaw)) : 12;
   const rearmRaw = obj.rearmAboveEurPerTon == null ? thresholdEurPerTon + 2 : Number(obj.rearmAboveEurPerTon);
   const rearmAboveEurPerTon = Number.isFinite(rearmRaw) ? Math.max(thresholdEurPerTon, rearmRaw) : thresholdEurPerTon + 2;
+  const rearmBelowRaw = obj.rearmBelowEurPerTon == null ? thresholdEurPerTon - 2 : Number(obj.rearmBelowEurPerTon);
+  const rearmBelowEurPerTon =
+    Number.isFinite(rearmBelowRaw) && rearmBelowRaw > 0 ? Math.min(thresholdEurPerTon, rearmBelowRaw) : Math.max(1, thresholdEurPerTon - 2);
+  const repeatWhileTriggered = Boolean(obj.repeatWhileTriggered ?? obj.repeatWhileBelow ?? false);
 
   return {
     id,
@@ -38,14 +43,17 @@ function normalizeRule(input) {
     name: obj.name ? String(obj.name).slice(0, 120) : "",
     sourceId,
     thresholdEurPerTon,
-    direction: "below",
+    direction,
     matchQuery,
     query: matchQuery ? query : null,
     minIntervalHours,
-    repeatWhileBelow: Boolean(obj.repeatWhileBelow ?? false),
+    repeatWhileBelow: repeatWhileTriggered,
+    repeatWhileTriggered,
     rearmAboveEurPerTon,
+    rearmBelowEurPerTon,
     // runtime state
     lastBelow: Boolean(obj.lastBelow ?? false),
+    lastAbove: Boolean(obj.lastAbove ?? false),
     lastSentAt: obj.lastSentAt ? String(obj.lastSentAt) : null,
     lastSentPriceEurPerTon: typeof obj.lastSentPriceEurPerTon === "number" ? obj.lastSentPriceEurPerTon : null,
     lastError: obj.lastError ? String(obj.lastError).slice(0, 500) : null,
@@ -102,6 +110,22 @@ function queryMatches(ruleQuery, itemQuery) {
 function shouldSendNow(rule, nowMs, currentPrice) {
   if (!rule.enabled) return { send: false, reason: "disabled" };
 
+  if (rule.direction === "above") {
+    const isAbove = typeof currentPrice === "number" && currentPrice >= rule.thresholdEurPerTon;
+    if (!isAbove) {
+      const rearmed = currentPrice < Number(rule.rearmBelowEurPerTon ?? rule.thresholdEurPerTon);
+      return { send: false, reason: rearmed ? "rearmed" : "below_threshold", setAbove: rearmed ? false : rule.lastAbove };
+    }
+
+    const lastSentAtMs = rule.lastSentAt ? Date.parse(rule.lastSentAt) : 0;
+    const minIntervalMs = Number(rule.minIntervalHours || 12) * 60 * 60 * 1000;
+    const intervalOk = !lastSentAtMs || nowMs - lastSentAtMs >= minIntervalMs;
+    const edge = !rule.lastAbove;
+    if (edge) return { send: true, reason: "edge", setAbove: true };
+    if (rule.repeatWhileTriggered && intervalOk) return { send: true, reason: "interval", setAbove: true };
+    return { send: false, reason: "cooldown", setAbove: true };
+  }
+
   const isBelow = typeof currentPrice === "number" && currentPrice <= rule.thresholdEurPerTon;
   if (!isBelow) {
     const rearmed = currentPrice > Number(rule.rearmAboveEurPerTon ?? rule.thresholdEurPerTon);
@@ -115,7 +139,7 @@ function shouldSendNow(rule, nowMs, currentPrice) {
   // Edge trigger (crossing): send immediately when it becomes below.
   const edge = !rule.lastBelow;
   if (edge) return { send: true, reason: "edge", setBelow: true };
-  if (rule.repeatWhileBelow && intervalOk) return { send: true, reason: "interval", setBelow: true };
+  if (rule.repeatWhileTriggered && intervalOk) return { send: true, reason: "interval", setBelow: true };
   return { send: false, reason: "cooldown", setBelow: true };
 }
 
@@ -142,7 +166,7 @@ export function evaluateAlerts({ alerts, items, now = new Date() } = {}) {
     if (!item.ok || typeof item.priceEurPerTon !== "number") return rule;
 
     const decision = shouldSendNow(rule, nowMs, item.priceEurPerTon);
-    const updated = { ...rule, lastBelow: decision.setBelow ?? rule.lastBelow };
+    const updated = { ...rule, lastBelow: decision.setBelow ?? rule.lastBelow, lastAbove: decision.setAbove ?? rule.lastAbove };
 
     if (decision.send) {
       results.push({ rule, item, reason: decision.reason });

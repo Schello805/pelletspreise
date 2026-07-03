@@ -246,9 +246,13 @@ async function scrapeRunInternal({ query, onlyDemo = false, persistCached = fals
         const item = trig.item;
         const price = item?.priceEurPerTon;
         const dateKey = berlinDateKey(new Date(item?.retrievedAt || new Date()));
-        const subject = `Pelletpreis-Alarm: ${item.sourceName || item.sourceId} ≤ ${rule.thresholdEurPerTon} €/t`;
+        const isAboveAlarm = rule.direction === "above";
+        const operator = isAboveAlarm ? "≥" : "≤";
+        const conditionText = isAboveAlarm ? "Preis ist auf/über den Grenzwert gestiegen" : "Preis ist auf/unter den Grenzwert gefallen";
+        const subject = `Pelletpreis-Alarm: ${item.sourceName || item.sourceId} ${operator} ${rule.thresholdEurPerTon} €/t`;
         const text = [
           `Auslöser: ${rule.name || rule.id}`,
+          `Bedingung: ${conditionText} (${operator} ${rule.thresholdEurPerTon} €/t)`,
           `Quelle: ${item.sourceName || item.sourceId}`,
           `Datum: ${dateKey}`,
           `Preis: ${typeof price === "number" ? `${price} €/t` : "—"}`,
