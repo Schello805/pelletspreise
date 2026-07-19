@@ -1930,3 +1930,75 @@ textarea {
     width: 100%;
   }
 }
+
+@media (max-width: 880px) {
+  .app-nav .container {
+    align-items: flex-start;
+  }
+
+  .navbar-collapse {
+    width: 100%;
+  }
+
+  .navbar-collapse.show {
+    padding-bottom: 8px;
+  }
+
+  .navbar .nav-link.tab {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .navbar-collapse .d-flex {
+    align-items: stretch !important;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .history-pick-card {
+    display: block;
+    margin: 8px 8px 10px;
+    padding: 9px;
+  }
+
+  .history-pick-card .field + .field {
+    margin-top: 10px;
+  }
+
+  .history-pick-main,
+  .history-pick-lines {
+    grid-column: 1 / -1;
+  }
+
+  .history-compare-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .compare-series {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    max-height: 190px;
+  }
+
+  .compare-item {
+    min-width: 0;
+  }
+
+  .compare-item span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chart-wrap {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .analysis-grid {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}

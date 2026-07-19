@@ -805,10 +805,20 @@ function setupTabs() {
     Object.entries(panels).forEach(([k, el]) => el.classList.toggle("show", k === name));
   }
 
+  function closeMobileNav() {
+    const nav = document.getElementById("ppNavbar");
+    const toggler = document.querySelector(".navbar-toggler");
+    if (!nav || !toggler || window.matchMedia("(min-width: 992px)").matches) return;
+    nav.classList.remove("show");
+    toggler.classList.add("collapsed");
+    toggler.setAttribute("aria-expanded", "false");
+  }
+
   tabs.forEach((t) =>
     t.addEventListener("click", async () => {
       const name = t.dataset.tab;
       activate(name);
+      closeMobileNav();
       if (name === "sources") {
         await refreshDiagnostics().catch(() => {});
         await refreshSettings().catch(() => {});
@@ -832,6 +842,7 @@ function setupTabs() {
     jump.addEventListener("click", async () => {
       const name = jump.dataset.tabJump;
       activate(name);
+      closeMobileNav();
       if (name === "alarms") {
         await refreshAlerts().catch((e) => toast(e.message || "Alarme nicht verfügbar", { kind: "error" }));
         await refreshEmailConfig().catch(() => {});
