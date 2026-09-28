@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokument
 
 Das Format basiert auf *Keep a Changelog* und Versionsnummern folgen *Semantic Versioning*.
 
+## [0.2.29] - 2026-09-28
+### Added
+- CapRover-Deployment mit Playwright-fähigem Docker-Image und persistentem Datenvolume.
+- Backup/Restore im System-Tab für 30, 90 oder frei wählbare Historientage.
+- Automatisches Sicherheitsbackup vor jeder Wiederherstellung.
+
 ## [1.1.0] - 2026-04-13
 ### Added
 - PWA/Service‑Worker: Offline‑Support und „Update installieren“ direkt aus dem Footer (HTTPS/localhost).

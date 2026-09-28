@@ -41,6 +41,7 @@ Optional (für Playwright-Quellen wie „HeizPellets24 Angebotsliste“):
 - Alarme: E-Mail bei Schwellwert (€/t), mit Wiederaktivierung nach Preis-Erholung
 - Abrufstatus: Cache-Alter, Tageslimit und nächstmögliche echte Abfrage
 - Datenqualität: Warnung bei starken Abweichungen vom historischen Median
+- Backup/Restore mit frei wählbarem Historienzeitraum und Sicherheitsbackup
 - System-Tab: Diagnose für Quellen, Speicher, E-Mail, Playwright, Schutz und Updates
 
 ## Versionierung
@@ -77,6 +78,34 @@ Restart:
 - Im Tab „Alarme“ auf „Testmail“ klicken **oder**
 - per API:
   - `curl -sS -X POST http://127.0.0.1:8000/api/email/test -H 'content-type: application/json' -d '{}'`
+
+## Installation mit CapRover
+
+Das Repository enthält eine `captain-definition` und ein produktionsfertiges `Dockerfile` inklusive Chromium für Playwright-Quellen.
+
+1. In CapRover eine neue App anlegen und **Container HTTP Port `8000`** einstellen.
+2. Unter **Deployment** dieses GitHub-Repository bzw. den Branch `main` verbinden und bereitstellen.
+3. Unter **App Configs → Environmental Variables** mindestens setzen:
+   - `BASE_URL=https://pelletpreise.example.de`
+   - `APP_USERNAME=admin`
+   - `APP_PASSWORD=<langes-zufälliges-passwort>`
+   - bei E-Mail-Alarmen zusätzlich die unten beschriebenen `SMTP_*`- und `ALERT_TO`-Werte
+4. Unter **App Configs → Persistent Directories** ein Volume für **`/app/server/data`** anlegen.
+5. HTTPS aktivieren und die App mit genau einer Instanz betreiben, damit der tägliche Abruf nicht mehrfach gestartet wird.
+
+Quellen, Historie, Einstellungen, Alarme und automatisch angelegte Sicherheitsbackups liegen dadurch im persistenten Volume und bleiben bei neuen Deployments erhalten. Updates werden bei CapRover über ein erneutes Deployment ausgeführt; das Debian/LXC-Update-Script wird im Container nicht benötigt.
+
+### Backup & Restore
+
+Im Tab **System** steht der Bereich **Backup & Wiederherstellung** zur Verfügung:
+
+- Backup der letzten 30 oder 90 Tage oder eines frei wählbaren Zeitraums bis 3650 Tage
+- Quellen, Einstellungen und Alarme sind unabhängig vom Zeitraum immer vollständig enthalten
+- Download als komprimierte Datei `*.json.gz`
+- Restore mit Prüfung des Dateiformats und klarer Bestätigung
+- Vor jedem Restore entsteht automatisch ein vollständiges Sicherheitsbackup unter `/app/server/data/backups`; die fünf neuesten Sicherheitsbackups bleiben erhalten
+
+Backup-Dateien können gespeicherte KI-API-Keys enthalten und sollten deshalb vertraulich behandelt werden. Für einen vollständigen Infrastruktur-Schutz empfiehlt sich zusätzlich ein regelmäßiges Volume-Backup auf Ebene des CapRover-Servers.
 
 ## Installation (Debian 13 / Proxmox LXC)
 

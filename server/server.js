@@ -13,6 +13,7 @@ import { berlinDateKey, berlinHour, patchSettings, publicSettings, readSettings,
 import { evaluateAlerts, patchAlerts, readAlerts, writeAlerts } from "./lib/alerts.js";
 import { getEmailConfig, sendAlertEmail } from "./lib/email.js";
 import { annotatePriceAnomalies } from "./lib/anomaly.js";
+import { createBackup, restoreBackup } from "./lib/backup.js";
 import { applyPlaceholders, jsonResponse, newId, normalizeQuery, parseGermanNumber, readJsonBody, textResponse } from "./lib/util.js";
 import { runSource } from "./scrape/runner.js";
 
@@ -38,14 +39,27 @@ const GITHUB_REPO = "Schello805/pelletspreise";
 const APP_USERNAME = String(process.env.APP_USERNAME || "admin");
 const APP_PASSWORD = String(process.env.APP_PASSWORD || "");
 const ALLOW_FRONTEND_UPDATE = ["1", "true", "yes", "on"].includes(String(process.env.ALLOW_FRONTEND_UPDATE || "").toLowerCase());
+const DEPLOYMENT_MODE = String(process.env.DEPLOYMENT_MODE || "native").trim().toLowerCase();
 const UPDATE_REQUEST_FILE = String(process.env.UPDATE_REQUEST_FILE || "/var/lib/pelletpreis-checker/update.request");
 const UPDATE_PATH_UNIT_FILE = "/etc/systemd/system/pelletpreis-checker-update.path";
 
-let remoteUpdateCache = { checkedAtMs: 0, ok: false, sha: null, date: null, error: null };
+let remoteUpdateCache = { checkedAtMs: 0, ok: false, sha: null, date: null, version: null, error: null };
 let dailyHistoryCache = new Map(); // key -> { atMs, sig, rows }
 const AUTH_COOKIE = "pelletpreis_session";
 const AUTH_SESSION_MS = 12 * 60 * 60 * 1000;
 const REMEMBERED_AUTH_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+async function readBinaryBody(req, { maxBytes = MAX_BACKUP_UPLOAD_BYTES } = {}) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw new Error("Die Backup-Datei ist größer als 100 MB.");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
 async function readLocalGitSha() {
   try {
@@ -85,6 +99,19 @@ function shortSha(sha) {
   return /^[0-9a-f]{7,40}$/i.test(s) ? s.slice(0, 7) : null;
 }
 
+function isNewerVersion(candidate, current) {
+  const parse = (value) => String(value || "").split(".").map((part) => Number(part));
+  const next = parse(candidate);
+  const installed = parse(current);
+  if (next.length < 3 || installed.length < 3 || [...next, ...installed].some((part) => !Number.isInteger(part) || part < 0)) return false;
+  for (let index = 0; index < Math.max(next.length, installed.length); index++) {
+    const a = next[index] || 0;
+    const b = installed[index] || 0;
+    if (a !== b) return a > b;
+  }
+  return false;
+}
+
 async function fetchRemoteMainSha({ force = false } = {}) {
   const now = Date.now();
   const maxAgeMs = 30 * 60 * 1000;
@@ -102,10 +129,19 @@ async function fetchRemoteMainSha({ force = false } = {}) {
     const data = await r.json().catch(() => null);
     const sha = data?.sha ? String(data.sha) : null;
     const date = data?.commit?.author?.date ? String(data.commit.author.date) : null;
-    remoteUpdateCache = { checkedAtMs: now, ok: Boolean(sha), sha, date, error: null };
+    let version = null;
+    try {
+      const packageResponse = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/main/package.json`, {
+        headers: { "user-agent": "pelletpreis-checker/0.1 (+contact: info@schellenberger.biz)" },
+      });
+      if (packageResponse.ok) version = String((await packageResponse.json())?.version || "").trim() || null;
+    } catch {
+      version = null;
+    }
+    remoteUpdateCache = { checkedAtMs: now, ok: Boolean(sha || version), sha, date, version, error: null };
     return remoteUpdateCache;
   } catch (err) {
-    remoteUpdateCache = { checkedAtMs: now, ok: false, sha: null, date: null, error: err?.message || String(err) };
+    remoteUpdateCache = { checkedAtMs: now, ok: false, sha: null, date: null, version: null, error: err?.message || String(err) };
     return remoteUpdateCache;
   }
 }
@@ -829,14 +865,17 @@ async function handleApi(req, res, url) {
     const localSha = await readLocalGitSha();
     const local = { version: APP_VERSION, sha: localSha, rev: shortSha(localSha) };
     const remote = await fetchRemoteMainSha({ force: url.searchParams.get("force") === "1" });
-    const latest = { sha: remote.sha, rev: shortSha(remote.sha), date: remote.date };
-    const updateAvailable = Boolean(local.rev && latest.rev && local.rev !== latest.rev);
-    const hint = [
-      "Update (Debian/Proxmox LXC):",
-      "  cd /opt/pelletpreis-checker/scripts",
-      "  chmod +x update-pelletpreis-checker-debian13-lxc.sh",
-      "  ./update-pelletpreis-checker-debian13-lxc.sh",
-    ].join("\n");
+    const latest = { version: remote.version, sha: remote.sha, rev: shortSha(remote.sha), date: remote.date };
+    const updateAvailable = local.rev && latest.rev ? local.rev !== latest.rev : isNewerVersion(latest.version, local.version);
+    const hint =
+      DEPLOYMENT_MODE === "caprover"
+        ? "Update (CapRover): Im CapRover-Dashboard die App öffnen und unter Deployment erneut den Branch main bereitstellen. Das persistente Volume /app/server/data bleibt erhalten."
+        : [
+            "Update (Debian/Proxmox LXC):",
+            "  cd /opt/pelletpreis-checker/scripts",
+            "  chmod +x update-pelletpreis-checker-debian13-lxc.sh",
+            "  ./update-pelletpreis-checker-debian13-lxc.sh",
+          ].join("\n");
     const updateRequested = await fs
       .access(UPDATE_REQUEST_FILE)
       .then(() => true)
@@ -853,6 +892,7 @@ async function handleApi(req, res, url) {
       updateHint: hint,
       remoteOk: remote.ok,
       remoteError: remote.error,
+      deploymentMode: DEPLOYMENT_MODE,
       frontendUpdateEnabled: ALLOW_FRONTEND_UPDATE,
       frontendUpdateInstalled,
       frontendUpdateReady: Boolean(APP_PASSWORD && ALLOW_FRONTEND_UPDATE && frontendUpdateInstalled),
@@ -985,6 +1025,12 @@ async function handleApi(req, res, url) {
         }),
       );
       diag.storage = entries;
+      try {
+        const backupEntries = await fs.readdir(path.join(dataDir, "backups"), { withFileTypes: true });
+        diag.backups = { safetyBackups: backupEntries.filter((entry) => entry.isFile() && entry.name.endsWith(".json.gz")).length };
+      } catch {
+        diag.backups = { safetyBackups: 0 };
+      }
     } catch {
       // Diagnostics should remain available even when optional parts fail.
     }
@@ -1004,6 +1050,30 @@ async function handleApi(req, res, url) {
     const next = patchSettings(current, patch);
     await writeSettings({ projectRoot, settings: next });
     return jsonResponse(res, 200, { ok: true, settings: publicSettings(next) });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/backup") {
+    const days = Number(url.searchParams.get("days") || 30);
+    const { buffer, payload } = await createBackup({ projectRoot, days });
+    const dateKey = new Date().toISOString().slice(0, 10);
+    res.writeHead(200, {
+      "content-type": "application/gzip",
+      "content-disposition": `attachment; filename="pelletpreis-checker-backup-${dateKey}-${days}tage.json.gz"`,
+      "content-length": String(buffer.length),
+      "cache-control": "no-store",
+      "x-backup-history-items": String(payload.summary.historyItems),
+    });
+    return res.end(buffer);
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/restore") {
+    const buffer = await readBinaryBody(req);
+    const result = await restoreBackup({ projectRoot, buffer });
+    dailyHistoryCache.clear();
+    return jsonResponse(res, 200, {
+      ok: true,
+      restore: { ...result, safetyBackupPath: path.basename(result.safetyBackupPath) },
+    });
   }
 
   if (req.method === "GET" && url.pathname === "/api/alerts") {

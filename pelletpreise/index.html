@@ -734,6 +734,34 @@
 	            <div class="overview-card muted">Lade Diagnose …</div>
 	          </div>
 
+	          <section class="backup-panel" aria-labelledby="backupTitle">
+	            <div class="backup-copy">
+	              <span class="eyebrow">Datensicherung</span>
+	              <h2 class="backup-title" id="backupTitle">Backup &amp; Wiederherstellung</h2>
+	              <p class="backup-description">Sichert Quellen, Einstellungen, Alarme und die Historie als komprimierte Datei.</p>
+	            </div>
+	            <div class="backup-controls">
+	              <label class="field backup-range-field">
+	                <span class="label">Historie im Backup</span>
+	                <select id="backupDays">
+	                  <option value="30">Letzte 30 Tage</option>
+	                  <option value="90">Letzte 90 Tage</option>
+	                  <option value="custom">Freie Anzahl</option>
+	                </select>
+	              </label>
+	              <label class="field backup-custom-days" id="backupCustomDaysWrap" hidden>
+	                <span class="label">Tage</span>
+	                <input id="backupCustomDays" type="number" min="1" max="3650" step="1" value="365" inputmode="numeric" />
+	              </label>
+	              <div class="backup-actions">
+	                <button class="btn btn-primary btn-sm" type="button" id="downloadBackupBtn">Backup herunterladen</button>
+	                <input id="restoreBackupFile" type="file" accept=".gz,application/gzip,application/json" hidden />
+	                <button class="btn btn-outline-light btn-sm" type="button" id="chooseRestoreBackupBtn">Backup auswählen</button>
+	              </div>
+	            </div>
+	            <div class="backup-status muted" id="backupStatus">Vor jedem Restore wird automatisch ein Sicherheitsbackup im Datenvolume angelegt.</div>
+	          </section>
+
 	          <div class="px-3 pb-3">
 	            <details class="card bg-transparent border-secondary-subtle" style="margin: 0;">
 	              <summary class="card-header" style="cursor:pointer;">
@@ -784,6 +812,25 @@
 	    </footer>
 
 	    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+	    <dialog id="restoreDialog" class="dialog confirm-dialog" aria-labelledby="restoreDialogTitle">
+	      <div class="dialog-inner">
+	        <div class="dialog-head">
+	          <div>
+	            <div class="dialog-title" id="restoreDialogTitle">Backup wiederherstellen?</div>
+	            <div class="dialog-subtitle" id="restoreDialogFile">Ausgewählte Backup-Datei</div>
+	          </div>
+	          <button class="icon-btn" type="button" id="closeRestoreDialogBtn" aria-label="Schließen">×</button>
+	        </div>
+	        <div class="dialog-body restore-dialog-body">
+	          <div class="restore-warning"><strong>Die aktuellen Quellen, Einstellungen, Alarme und Historienwerte werden ersetzt.</strong><br />Vorher speichert die App automatisch ein vollständiges Sicherheitsbackup im persistenten Datenvolume.</div>
+	        </div>
+	        <div class="dialog-foot">
+	          <button class="btn btn-outline-light btn-sm" type="button" id="cancelRestoreBtn">Abbrechen</button>
+	          <button class="btn btn-danger btn-sm" type="button" id="confirmRestoreBtn">Jetzt wiederherstellen</button>
+	        </div>
+	      </div>
+	    </dialog>
 
 	    <dialog id="loginDialog" class="dialog login-dialog" aria-labelledby="loginDialogTitle">
 	      <form id="loginForm" class="dialog-inner" novalidate>

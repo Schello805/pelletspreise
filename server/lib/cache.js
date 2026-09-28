@@ -170,3 +170,12 @@ export async function pruneCache({ projectRoot }) {
   }
   await writeCache({ projectRoot, cache: { version: CACHE_VERSION, items: nextItems } });
 }
+
+export async function clearCache({ projectRoot }) {
+  const db = await getDb({ projectRoot });
+  if (db) {
+    db.prepare("DELETE FROM cache").run();
+    return;
+  }
+  await writeCache({ projectRoot, cache: { version: CACHE_VERSION, items: {} } });
+}

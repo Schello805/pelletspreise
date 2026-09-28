@@ -761,6 +761,87 @@ function formatBytes(value) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function selectedBackupDays() {
+  const selection = String(document.getElementById("backupDays")?.value || "30");
+  const value = selection === "custom" ? Number(document.getElementById("backupCustomDays")?.value) : Number(selection);
+  if (!Number.isInteger(value) || value < 1 || value > 3650) throw new Error("Bitte 1 bis 3650 Tage auswählen.");
+  return value;
+}
+
+function setBackupStatus(message, kind = "info") {
+  const status = document.getElementById("backupStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("is-success", kind === "success");
+  status.classList.toggle("is-error", kind === "error");
+}
+
+async function responseError(response) {
+  const body = await response.json().catch(() => null);
+  if (response.status === 401 && body?.authRequired) window.dispatchEvent(new CustomEvent("pelletpreis:auth-required"));
+  return new Error(body?.error || body?.message || response.statusText || "Anfrage fehlgeschlagen.");
+}
+
+async function downloadBackup() {
+  const days = selectedBackupDays();
+  const button = document.getElementById("downloadBackupBtn");
+  if (button) button.disabled = true;
+  setBackupStatus(`Backup für die letzten ${days} Tage wird erstellt …`);
+  try {
+    const response = await fetch(`/api/backup?days=${encodeURIComponent(days)}`);
+    if (!response.ok) throw await responseError(response);
+    const blob = await response.blob();
+    const disposition = String(response.headers.get("content-disposition") || "");
+    const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || `pelletpreis-checker-backup-${days}tage.json.gz`;
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+    const itemCount = response.headers.get("x-backup-history-items");
+    setBackupStatus(`Backup heruntergeladen${itemCount ? ` · ${itemCount} Historieneinträge` : ""}. Die Datei kann sensible API-Zugangsdaten enthalten.`, "success");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function restoreSelectedBackup() {
+  const fileInput = document.getElementById("restoreBackupFile");
+  const file = fileInput?.files?.[0];
+  if (!file) throw new Error("Bitte zuerst eine Backup-Datei auswählen.");
+  const button = document.getElementById("confirmRestoreBtn");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Wird wiederhergestellt …";
+  }
+  setBackupStatus("Backup wird geprüft und wiederhergestellt …");
+  try {
+    const response = await fetch("/api/restore", {
+      method: "POST",
+      headers: { "content-type": "application/gzip" },
+      body: await file.arrayBuffer(),
+    });
+    if (!response.ok) throw await responseError(response);
+    const data = await response.json();
+    document.getElementById("restoreDialog")?.close();
+    fileInput.value = "";
+    await Promise.all([refreshSources(), refreshSettings(), refreshAlerts(), refreshHistory()]);
+    await refreshDailyHistory({ apiFetch, $, state, toast, renderDailyHistory });
+    await refreshSystem();
+    const count = data?.restore?.summary?.historyItems;
+    setBackupStatus(`Wiederherstellung abgeschlossen${Number.isFinite(count) ? ` · ${count} Historieneinträge` : ""}. Sicherheitsbackup: ${data?.restore?.safetyBackupPath || "angelegt"}`, "success");
+    toast("Backup erfolgreich wiederhergestellt.", { kind: "success", timeoutMs: 5000 });
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Jetzt wiederherstellen";
+    }
+  }
+}
+
 function renderSystem() {
   const host = document.getElementById("systemSummary");
   if (!host) return;
@@ -776,7 +857,7 @@ function renderSystem() {
     <div class="overview-card"><div class="overview-title">KI-Analyse</div><div class="overview-value">${diag.ai?.configured ? "Bereit" : "Aus"}</div><div class="overview-meta">${diag.ai?.configured ? `${escapeHtml(diag.ai.provider || "KI")} · ${escapeHtml(diag.ai.model || "Standardmodell")}` : "Optional: API-Key unten hinterlegen"}</div></div>
     <div class="overview-card"><div class="overview-title">Playwright</div><div class="overview-value">${diag.playwright?.chromiumOk ? "Bereit" : "Prüfen"}</div><div class="overview-meta">${diag.playwright?.chromiumOk ? "Chromium installiert" : "Browser fehlt oder Playwright nicht verfügbar"}</div></div>
     <div class="overview-card"><div class="overview-title">Schutz</div><div class="overview-value">${diag.security?.passwordProtection ? "Passwort aktiv" : "LAN offen"}</div><div class="overview-meta">${diag.security?.passwordProtection ? `Benutzer: ${escapeHtml(diag.security.username || "admin")}` : "Optional: APP_PASSWORD setzen"}</div></div>
-    <div class="overview-card system-storage"><div class="overview-title">Lokaler Speicher</div><div class="overview-meta">${storage.length ? storage.map((entry) => `${escapeHtml(entry.name)}: ${escapeHtml(formatBytes(entry.bytes))}`).join("<br/>") : "—"}</div></div>
+    <div class="overview-card system-storage"><div class="overview-title">Persistenter Speicher</div><div class="overview-meta">${storage.length ? storage.map((entry) => `${escapeHtml(entry.name)}: ${escapeHtml(formatBytes(entry.bytes))}`).join("<br/>") : "—"}${diag.backups?.safetyBackups ? `<br/>Sicherheitsbackups: ${escapeHtml(String(diag.backups.safetyBackups))}` : ""}</div></div>
   `;
 }
 
@@ -1195,6 +1276,48 @@ function setupEvents() {
 
   const refreshSystemBtn = document.getElementById("refreshSystemBtn");
   if (refreshSystemBtn) refreshSystemBtn.addEventListener("click", () => refreshSystem().catch((e) => toast(e.message || "Diagnose nicht verfügbar", { kind: "error" })));
+
+  const backupDays = document.getElementById("backupDays");
+  const backupCustomDaysWrap = document.getElementById("backupCustomDaysWrap");
+  backupDays?.addEventListener("change", () => {
+    if (backupCustomDaysWrap) backupCustomDaysWrap.hidden = backupDays.value !== "custom";
+    if (backupDays.value === "custom") document.getElementById("backupCustomDays")?.focus();
+  });
+  document.getElementById("downloadBackupBtn")?.addEventListener("click", () => {
+    downloadBackup().catch((error) => {
+      setBackupStatus(error.message || "Backup konnte nicht erstellt werden.", "error");
+      toast(error.message || "Backup konnte nicht erstellt werden.", { kind: "error", timeoutMs: 6000 });
+    });
+  });
+
+  const restoreFileInput = document.getElementById("restoreBackupFile");
+  const restoreDialog = document.getElementById("restoreDialog");
+  document.getElementById("chooseRestoreBackupBtn")?.addEventListener("click", () => restoreFileInput?.click());
+  restoreFileInput?.addEventListener("change", () => {
+    const file = restoreFileInput.files?.[0];
+    if (!file) return;
+    const fileLabel = document.getElementById("restoreDialogFile");
+    if (fileLabel) fileLabel.textContent = `${file.name} · ${formatBytes(file.size)}`;
+    restoreDialog?.showModal();
+  });
+  const closeRestoreDialog = () => {
+    restoreDialog?.close();
+    if (restoreFileInput) restoreFileInput.value = "";
+  };
+  document.getElementById("closeRestoreDialogBtn")?.addEventListener("click", closeRestoreDialog);
+  document.getElementById("cancelRestoreBtn")?.addEventListener("click", closeRestoreDialog);
+  restoreDialog?.addEventListener("click", (event) => {
+    if (event.target === restoreDialog) closeRestoreDialog();
+  });
+  restoreDialog?.addEventListener("cancel", () => {
+    if (restoreFileInput) restoreFileInput.value = "";
+  });
+  document.getElementById("confirmRestoreBtn")?.addEventListener("click", () => {
+    restoreSelectedBackup().catch((error) => {
+      setBackupStatus(error.message || "Backup konnte nicht wiederhergestellt werden.", "error");
+      toast(error.message || "Backup konnte nicht wiederhergestellt werden.", { kind: "error", timeoutMs: 7000 });
+    });
+  });
 
   const saveAiSettingsBtn = document.getElementById("saveAiSettingsBtn");
   const aiApiKeyInput = document.getElementById("aiApiKey");
