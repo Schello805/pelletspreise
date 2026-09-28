@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokument
 
 Das Format basiert auf *Keep a Changelog* und Versionsnummern folgen *Semantic Versioning*.
 
+## [0.2.30] - 2026-09-28
+### Changed
+- Die Webapp läuft nativ und unter CapRover direkt unter `/` auf Port 8000.
+- Alte `/pelletpreise/`-Adressen werden dauerhaft auf den neuen Root-Pfad weitergeleitet.
+
 ## [0.2.29] - 2026-09-28
 ### Added
 - CapRover-Deployment mit Playwright-fähigem Docker-Image und persistentem Datenvolume.

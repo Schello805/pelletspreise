@@ -16,7 +16,7 @@ Voraussetzungen: Node.js (>= 18)
 2. Server starten:
    - `node server/server.js`
 3. Öffnen:
-   - `http://127.0.0.1:8000/pelletpreise/`
+   - `http://127.0.0.1:8000/`
 
 Optional (für Playwright-Quellen wie „HeizPellets24 Angebotsliste“):
 
@@ -29,7 +29,7 @@ Optional (für Playwright-Quellen wie „HeizPellets24 Angebotsliste“):
 2. Server starten:
    - `node server/server.js`
 3. Öffnen:
-   - `http://127.0.0.1:8000/pelletpreise/`
+   - `http://127.0.0.1:8000/`
 
 ## Features
 

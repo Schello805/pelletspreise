@@ -449,10 +449,10 @@ function applyHistoryModeToResult(result, historyMode) {
 
 function resolveFrontendPath(urlPath) {
   const safe = urlPath.replace(/\/+/g, "/");
-  if (safe === "/pelletpreise" || safe === "/pelletpreise/") return path.join(projectRoot, "pelletpreise", "index.html");
-  if (!safe.startsWith("/pelletpreise/")) return null;
-  const rel = safe.slice("/pelletpreise/".length);
-  if (!rel || rel.includes("..")) return null;
+  if (safe === "/" || safe === "/index.html") return path.join(projectRoot, "pelletpreise", "index.html");
+  const rel = safe.slice(1);
+  const isFrontendFile = ["app.js", "styles.css", "update.html"].includes(rel) || /^src\/[a-zA-Z0-9_-]+\.js$/.test(rel);
+  if (!isFrontendFile || rel.includes("..")) return null;
   return path.join(projectRoot, "pelletpreise", rel);
 }
 
@@ -1486,8 +1486,9 @@ async function handleApi(req, res, url) {
 async function handle(req, res) {
   const url = new URL(req.url, BASE_URL);
   try {
-    if (url.pathname === "/" || url.pathname === "/pelletpreise") {
-      res.writeHead(302, { location: "/pelletpreise/" });
+    if (url.pathname === "/pelletpreise" || url.pathname === "/pelletpreise/" || url.pathname.startsWith("/pelletpreise/")) {
+      const targetPath = url.pathname === "/pelletpreise" || url.pathname === "/pelletpreise/" ? "/" : url.pathname.slice("/pelletpreise".length);
+      res.writeHead(308, { location: `${targetPath}${url.search}` });
       return res.end();
     }
 
@@ -1530,7 +1531,7 @@ async function handle(req, res) {
 const server = http.createServer(handle);
 server.listen(PORT, HOST, () => {
   // eslint-disable-next-line no-console
-  console.log(`Pelletpreise-Server läuft: ${BASE_URL}/pelletpreise/`);
+  console.log(`Pelletpreise-Server läuft: ${BASE_URL}/`);
 
   // Auto run: check periodically whether today's data is missing.
   // We keep this lightweight (no background work when disabled / before the minimum hour).

@@ -7,11 +7,11 @@ Lokale Webapp zum Abrufen und Vergleichen von Pelletpreisen aus mehreren Quellen
 1. Server starten:
    - `node server/server.js`
 2. App öffnen:
-   - `http://127.0.0.1:8000/pelletpreise/`
+   - `http://127.0.0.1:8000/`
 
 ## Features
 
-- **Quellenverwaltung** in der UI (`/pelletpreise/` → Tab „Quellen“)
+- **Quellenverwaltung** in der UI (`/` → Tab „Quellen“)
   - `http-regex` (Preis ist im HTML vorhanden)
   - `playwright` (Formulare/JavaScript; optional)
 - **Tages-Cache**: pro Quelle + Parametern wird i. d. R. nur 1× pro Tag abgerufen (Berlin-Zeit)
@@ -58,4 +58,3 @@ Wenn eine Quelle client-seitig rendert (z. B. Seiten mit Formular + JS), kann 
 ## Rechtliches
 
 Scraping kann gegen Nutzungsbedingungen verstoßen. Nutze nur Quellen, die du verwenden darfst.
-

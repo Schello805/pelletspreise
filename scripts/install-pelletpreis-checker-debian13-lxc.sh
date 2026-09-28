@@ -342,7 +342,7 @@ health_check() {
   source "$ENV_FILE"
   local url="http://127.0.0.1:${PORT:-8000}"
   if curl -sS -m 3 "${url}/api/health" >/dev/null; then
-    log "OK: ${url}/pelletpreise/"
+    log "OK: ${url}/"
   else
     log "Service started, but health check failed. Check logs:"
     log "  journalctl -u ${APP_NAME}.service -n 200 --no-pager"
@@ -365,7 +365,7 @@ main() {
 Done.
 
 - Service: ${APP_NAME}.service
-- URL: ${BASE_URL}/pelletpreise/
+- URL: ${BASE_URL}/
 - Logs: journalctl -u ${APP_NAME}.service -f
 
 If your LAN IP changes, update BASE_URL in ${ENV_FILE} and restart:

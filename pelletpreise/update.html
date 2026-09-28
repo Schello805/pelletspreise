@@ -267,7 +267,7 @@
       </section>
 
       <div class="actions">
-        <a class="primary" href="/pelletpreise/" id="appLink">Zur App</a>
+        <a class="primary" href="/" id="appLink">Zur App</a>
         <button class="secondary" type="button" id="retryBtn">Jetzt prüfen</button>
       </div>
       <p class="hint" id="hint">Tipp: Bitte diese Seite während des Updates offen lassen. Kein Router-Voodoo nötig.</p>
@@ -330,7 +330,7 @@
           statusTitle.textContent = "Update läuft — der Server startet gleich neu …";
           badgeText.textContent = "Update läuft";
           setActive("restart");
-          window.history.replaceState(null, "", "/pelletpreise/update.html");
+          window.history.replaceState(null, "", "/update.html");
         } catch (error) {
           setError(error?.message || "Update konnte nicht gestartet werden.");
         }
@@ -352,7 +352,7 @@
           if (consecutiveOk >= 2) {
             window.clearInterval(pollTimer);
             window.setTimeout(() => {
-              window.location.href = "/pelletpreise/?updated=1";
+              window.location.href = "/?updated=1";
             }, 900);
           }
         } catch {

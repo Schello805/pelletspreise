@@ -1367,7 +1367,7 @@ function setupEvents() {
       }
       runUpdateBtn.disabled = true;
       toast("Warteseite wird geöffnet. Das Update startet dort automatisch.", { kind: "success", timeoutMs: 3200 });
-      window.location.href = "/pelletpreise/update.html?start=1";
+      window.location.href = "/update.html?start=1";
     });
   }
   const compareHost = document.getElementById("dailyCompareSeries");
@@ -1646,7 +1646,7 @@ async function initialiseAuthenticatedApp({ showLogout = false } = {}) {
   document.getElementById("logoutBtn").hidden = !showLogout;
   if (new URLSearchParams(window.location.search).get("updated") === "1") {
     toast("Update abgeschlossen. Willkommen zurück.", { kind: "success", timeoutMs: 4200 });
-    window.history.replaceState(null, "", "/pelletpreise/");
+    window.history.replaceState(null, "", "/");
   }
   await refreshDiagnostics().catch(() => {});
 

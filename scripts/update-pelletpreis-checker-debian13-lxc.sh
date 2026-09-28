@@ -303,7 +303,7 @@ health_check() {
   log "Health check: ${url}/api/health"
   sleep 1
   if curl -sS -m 4 "${url}/api/health" >/dev/null; then
-    log "OK: ${url}/pelletpreise/"
+    log "OK: ${url}/"
   else
     log "Health check failed. Logs:"
     log "  journalctl -u ${APP_NAME}.service -n 200 --no-pager"
