@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokument
 
 Das Format basiert auf *Keep a Changelog* und Versionsnummern folgen *Semantic Versioning*.
 
+## [0.2.31] - 2026-09-28
+### Fixed
+- CapRover-Volumes sind für Backup, Restore und laufende Datenspeicherung zuverlässig beschreibbar.
+- Healthcheck und Systemdiagnose erkennen fehlende Schreibrechte am persistenten Speicher.
+- Eingebettetes App-Icon verhindert den unnötigen `favicon.ico`-Fehler.
+
 ## [0.2.30] - 2026-09-28
 ### Changed
 - Die Webapp läuft nativ und unter CapRover direkt unter `/` auf Port 8000.

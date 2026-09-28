@@ -5,16 +5,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-COPY --chown=pwuser:pwuser . .
-RUN mkdir -p /app/server/data && chown -R pwuser:pwuser /app/server/data
+COPY . .
+RUN mkdir -p /app/server/data
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8000 \
     DEPLOYMENT_MODE=caprover \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
-USER pwuser
 
 EXPOSE 8000
 VOLUME ["/app/server/data"]

@@ -49,6 +49,7 @@ const AUTH_COOKIE = "pelletpreis_session";
 const AUTH_SESSION_MS = 12 * 60 * 60 * 1000;
 const REMEMBERED_AUTH_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_BACKUP_UPLOAD_BYTES = 100 * 1024 * 1024;
+let dataStorageHealthCache = { checkedAtMs: 0, writable: false, error: null };
 
 async function readBinaryBody(req, { maxBytes = MAX_BACKUP_UPLOAD_BYTES } = {}) {
   const chunks = [];
@@ -59,6 +60,30 @@ async function readBinaryBody(req, { maxBytes = MAX_BACKUP_UPLOAD_BYTES } = {}) 
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+
+async function checkDataStorageWritable({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && dataStorageHealthCache.checkedAtMs && now - dataStorageHealthCache.checkedAtMs < 60_000) return dataStorageHealthCache;
+  const dataDir = path.join(projectRoot, "server", "data");
+  const probePath = path.join(dataDir, `.write-probe-${process.pid}-${crypto.randomBytes(4).toString("hex")}`);
+  try {
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.writeFile(probePath, "ok", "utf8");
+    await fs.unlink(probePath);
+    dataStorageHealthCache = { checkedAtMs: now, writable: true, error: null };
+  } catch (error) {
+    await fs.unlink(probePath).catch(() => {});
+    dataStorageHealthCache = { checkedAtMs: now, writable: false, error: error?.message || String(error) };
+  }
+  return dataStorageHealthCache;
+}
+
+function apiErrorMessage(error) {
+  if (["EACCES", "EPERM", "EROFS"].includes(String(error?.code || ""))) {
+    return "Der persistente Datenspeicher ist nicht beschreibbar. Prüfe die Rechte des Volumes /app/server/data und starte die App danach neu.";
+  }
+  return error?.message || String(error);
 }
 
 async function readLocalGitSha() {
@@ -858,7 +883,13 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/health") {
-    return jsonResponse(res, 200, { ok: true, version: APP_VERSION, baseUrl: BASE_URL });
+    const storage = await checkDataStorageWritable();
+    return jsonResponse(res, storage.writable ? 200 : 503, {
+      ok: storage.writable,
+      version: APP_VERSION,
+      baseUrl: BASE_URL,
+      storage: { writable: storage.writable, error: storage.error },
+    });
   }
 
   if (req.method === "GET" && url.pathname === "/api/update") {
@@ -957,6 +988,9 @@ async function handleApi(req, res, url) {
           .catch(() => false),
       },
     };
+    const storageHealth = await checkDataStorageWritable();
+    diag.storageWritable = storageHealth.writable;
+    diag.storageError = storageHealth.error;
     try {
       const st = await fs.stat(dataDir);
       diag.dataDirExists = st.isDirectory();
@@ -1523,7 +1557,7 @@ async function handle(req, res) {
     res.writeHead(200, { "content-type": contentTypeFor(filePath), "cache-control": "no-store" });
     res.end(data);
   } catch (err) {
-    if (url.pathname.startsWith("/api/")) return jsonResponse(res, 500, { error: err?.message || String(err) });
+    if (url.pathname.startsWith("/api/")) return jsonResponse(res, 500, { error: apiErrorMessage(err) });
     return textResponse(res, 500, err?.message || "Server error");
   }
 }
