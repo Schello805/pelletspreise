@@ -890,6 +890,15 @@ function setupTabs() {
     const nav = document.getElementById("ppNavbar");
     const toggler = document.querySelector(".navbar-toggler");
     if (!nav || !toggler || window.matchMedia("(min-width: 992px)").matches) return;
+    const Collapse = window.bootstrap?.Collapse;
+    if (Collapse) {
+      const collapse = Collapse.getOrCreateInstance(nav, { toggle: false });
+      if (nav.classList.contains("collapsing")) {
+        nav.addEventListener("shown.bs.collapse", () => collapse.hide(), { once: true });
+      } else {
+        collapse.hide();
+      }
+    }
     nav.classList.remove("show");
     toggler.classList.add("collapsed");
     toggler.setAttribute("aria-expanded", "false");
@@ -1372,6 +1381,15 @@ function setupEvents() {
   }
   const compareHost = document.getElementById("dailyCompareSeries");
   if (compareHost) compareHost.addEventListener("change", () => renderDailyHistory());
+  let chartResizeFrame = null;
+  window.addEventListener("resize", () => {
+    if (!document.getElementById("tab-history")?.classList.contains("show")) return;
+    if (chartResizeFrame) window.cancelAnimationFrame(chartResizeFrame);
+    chartResizeFrame = window.requestAnimationFrame(() => {
+      chartResizeFrame = null;
+      renderDailyHistory();
+    });
+  });
 
   // Sources table actions
   $("sourcesBody").addEventListener("click", async (e) => {

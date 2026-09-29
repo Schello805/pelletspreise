@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokument
 
 Das Format basiert auf *Keep a Changelog* und Versionsnummern folgen *Semantic Versioning*.
 
+## [0.2.32] - 2026-09-29
+### Changed
+- Die Oberfläche nutzt auf dem iPhone kompaktere Abstände, sichere Displayränder und gut erreichbare Touch-Ziele.
+- Tabellen, Dialoge, Navigation, Formulare und Aktionsleisten passen sich kleinen Displays ohne Überlagerungen an.
+- Das Historien-Diagramm wird mobil in passender Größe und Retina-Auflösung gezeichnet, statt nur verkleinert zu werden.
+
 ## [0.2.31] - 2026-09-28
 ### Fixed
 - CapRover-Volumes sind für Backup, Restore und laufende Datenspeicherung zuverlässig beschreibbar.

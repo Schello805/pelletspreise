@@ -60,10 +60,19 @@ function alignSeriesPoints(seriesList) {
 
 function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } = {}) {
   if (!canvas) return;
+  const measuredWidth = canvas.getBoundingClientRect().width || canvas.parentElement?.clientWidth || 1200;
+  const w = Math.max(280, Math.round(measuredWidth));
+  const compact = w < 640;
+  const h = compact ? 260 : 360;
+  const pixelRatio = Math.min(2, Math.max(1, Number(window.devicePixelRatio || 1)));
+  canvas.style.height = `${h}px`;
+  const physicalWidth = Math.round(w * pixelRatio);
+  const physicalHeight = Math.round(h * pixelRatio);
+  if (canvas.width !== physicalWidth) canvas.width = physicalWidth;
+  if (canvas.height !== physicalHeight) canvas.height = physicalHeight;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  const w = canvas.width;
-  const h = canvas.height;
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
   const allValues = [];
@@ -84,7 +93,7 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
   const yMinLabel = `${fmt(yMin)} ${unitLabel}`.trim();
   const labelW = Math.max(ctx.measureText(yMaxLabel).width, ctx.measureText(yMinLabel).width);
 
-  const pad = { l: Math.max(58, Math.ceil(labelW) + 18), r: 16, t: 18, b: 54 };
+  const pad = { l: Math.max(compact ? 50 : 58, Math.ceil(labelW) + (compact ? 10 : 18)), r: compact ? 8 : 16, t: 18, b: compact ? 42 : 54 };
   const innerW = w - pad.l - pad.r;
   const innerH = h - pad.t - pad.b;
 
@@ -140,7 +149,7 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
     ctx.font = "11px ui-sans-serif, system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    const tickCount = Math.min(6, axisDates.length);
+    const tickCount = Math.min(compact ? 4 : 6, axisDates.length);
     const step = Math.max(1, Math.ceil((axisDates.length - 1) / Math.max(1, tickCount - 1)));
     const indices = new Set();
     for (let i = 0; i < axisDates.length; i += step) indices.add(i);
@@ -170,7 +179,7 @@ function drawMultiLineChart(canvas, seriesList, { unitLabel = "", title = "" } =
   }
 
   // Legend (top right)
-  const legendMax = Math.min(seriesList.length, 5);
+  const legendMax = compact ? 0 : Math.min(seriesList.length, 5);
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.font = "12px ui-sans-serif, system-ui";
